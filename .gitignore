@@ -1,0 +1,4 @@
+build/
+lua_modules/
+*.swp
+*.swo
