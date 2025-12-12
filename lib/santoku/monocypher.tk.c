@@ -16,17 +16,6 @@ static void arc4random_buf(void *buf, size_t n) {
 }
 #endif
 
-#if LUA_VERSION_NUM < 502 && !defined(LUAJIT_VERSION)
-static void luaL_setfuncs(lua_State *L, const luaL_Reg *l, int nup) {
-  for (; l->name; l++) {
-    for (int i = 0; i < nup; i++) lua_pushvalue(L, -nup);
-    lua_pushcclosure(L, l->func, nup);
-    lua_setfield(L, -(nup + 2), l->name);
-  }
-  lua_pop(L, nup);
-}
-#endif
-
 #define MT_IDENTITY "tk_crypto_identity"
 #define MT_KEY "tk_crypto_key"
 #define VERSION 0x01
@@ -454,7 +443,7 @@ int luaopen_santoku_monocypher (lua_State *L)
     lua_pushcfunction(L, identity_gc);
     lua_setfield(L, -2, "__gc");
     lua_newtable(L);
-    luaL_setfuncs(L, identity_methods, 0);
+    tk_lua_register(L, identity_methods, 0);
     lua_setfield(L, -2, "__index");
   }
   lua_pop(L, 1);
@@ -464,13 +453,13 @@ int luaopen_santoku_monocypher (lua_State *L)
     lua_pushcfunction(L, key_gc);
     lua_setfield(L, -2, "__gc");
     lua_newtable(L);
-    luaL_setfuncs(L, key_methods, 0);
+    tk_lua_register(L, key_methods, 0);
     lua_setfield(L, -2, "__index");
   }
   lua_pop(L, 1);
 
   lua_newtable(L);
-  luaL_setfuncs(L, module_funcs, 0);
+  tk_lua_register(L, module_funcs, 0);
 
   lua_pushvalue(L, dice_tbl);
   lua_pushcclosure(L, l_generate, 1);
