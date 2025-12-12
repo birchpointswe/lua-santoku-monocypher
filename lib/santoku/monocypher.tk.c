@@ -16,7 +16,7 @@ static void arc4random_buf(void *buf, size_t n) {
 }
 #endif
 
-#if LUA_VERSION_NUM < 502
+#if LUA_VERSION_NUM < 502 && !defined(LUAJIT_VERSION)
 static void luaL_setfuncs(lua_State *L, const luaL_Reg *l, int nup) {
   for (; l->name; l++) {
     for (int i = 0; i < nup; i++) lua_pushvalue(L, -nup);
