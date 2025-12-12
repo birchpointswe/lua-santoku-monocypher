@@ -1,6 +1,5 @@
 #include <santoku/lua/utils.h>
 #include <string.h>
-#include <time.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <monocypher.h>
@@ -10,7 +9,6 @@
 #define MT_KEY "tk_crypto_key"
 #define VERSION 0x01
 #define PBKDF2_ITERATIONS 600000
-#define MAX_TIMESTAMP_DRIFT 300
 
 typedef struct {
   uint8_t sub[32];
@@ -204,27 +202,25 @@ static int l_identity_sign(lua_State *L) {
   return 1;
 }
 
-// identity:sign_request(body) -> timestamp, signature
+// identity:sign_request(body) -> signature
 static int l_identity_sign_request(lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
   size_t len;
   const char *body = luaL_checklstring(L, 2, &len);
-  lua_Integer ts = (lua_Integer)time(NULL);
   char sub_b64[44];
   size_t sub_b64_len;
   tk_lua_to_base64_buf((const char *)id->sub, 32, false, sub_b64, &sub_b64_len);
-  size_t msg_len = sub_b64_len + 24 + len + 1;
+  size_t msg_len = sub_b64_len + 1 + len + 1;
   char *msg = malloc(msg_len);
-  snprintf(msg, msg_len, "%.*s:%lld:%s", (int)sub_b64_len, sub_b64, (long long)ts, body);
+  snprintf(msg, msg_len, "%.*s:%s", (int)sub_b64_len, sub_b64, body);
   uint8_t sig[64];
   crypto_eddsa_sign(sig, id->signing_key, (const uint8_t *)msg, strlen(msg));
   free(msg);
   char sig_b64[88];
   size_t sig_b64_len;
   tk_lua_to_base64_buf((const char *)sig, 64, false, sig_b64, &sig_b64_len);
-  lua_pushinteger(L, ts);
   lua_pushlstring(L, sig_b64, sig_b64_len);
-  return 2;
+  return 1;
 }
 
 // identity:export()
@@ -343,29 +339,22 @@ static int l_key_decrypt(lua_State *L) {
   return 1;
 }
 
-// crypto.verify_request(public_key_b64, signature_b64, sub_b64, timestamp, body)
+// crypto.verify_request(public_key_b64, signature_b64, sub_b64, body)
 static int l_verify_request(lua_State *L) {
   size_t pk_b64_len, sig_b64_len;
   const char *pk_b64 = luaL_checklstring(L, 1, &pk_b64_len);
   const char *sig_b64 = luaL_checklstring(L, 2, &sig_b64_len);
   const char *sub_b64 = luaL_checkstring(L, 3);
-  lua_Integer ts = luaL_checkinteger(L, 4);
   size_t body_len;
-  const char *body = luaL_checklstring(L, 5, &body_len);
-  lua_Integer now = (lua_Integer)time(NULL);
-  if (llabs(now - ts) > MAX_TIMESTAMP_DRIFT) {
-    lua_pushnil(L);
-    lua_pushstring(L, "timestamp_expired");
-    return 2;
-  }
+  const char *body = luaL_checklstring(L, 4, &body_len);
   uint8_t sig[64];
   size_t out_len;
   tk_lua_from_base64_buf(sig_b64, sig_b64_len, false, (char *)sig, &out_len);
   uint8_t pk[32];
   tk_lua_from_base64_buf(pk_b64, pk_b64_len, false, (char *)pk, &out_len);
-  size_t msg_len = strlen(sub_b64) + 24 + body_len + 1;
+  size_t msg_len = strlen(sub_b64) + 1 + body_len + 1;
   char *msg = malloc(msg_len);
-  snprintf(msg, msg_len, "%s:%lld:%s", sub_b64, (long long)ts, body);
+  snprintf(msg, msg_len, "%s:%s", sub_b64, body);
   int valid = crypto_eddsa_check(sig, pk, (const uint8_t *)msg, strlen(msg)) == 0;
   free(msg);
   if (!valid) {
