@@ -1,11 +1,10 @@
 local env = {
   name = "santoku-monocypher",
-  version = "0.0.4-1",
+  version = "0.0.5-1",
   license = "MIT",
   public = true,
   cflags = {
     "-I$(shell luarocks show santoku --rock-dir)/include/",
-    "-I$(shell luarocks show santoku-matrix --rock-dir)/include/",
     "-I$(CURDIR)/../deps/monocypher"
   },
   ldflags = {
@@ -14,8 +13,7 @@ local env = {
   },
   dependencies = {
     "lua == 5.1",
-    "santoku >= 0.0.314-1",
-    "santoku-matrix >= 0.0.204-1",
+    "santoku >= 0.0.314-1"
   },
 }
 
