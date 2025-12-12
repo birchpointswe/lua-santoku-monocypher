@@ -5,6 +5,30 @@
 #include <monocypher.h>
 #include <sha256.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+static void arc4random_buf(void *buf, size_t n) {
+  EM_ASM({
+    var arr = new Uint8Array($1);
+    crypto.getRandomValues(arr);
+    HEAPU8.set(arr, $0);
+  }, buf, n);
+}
+#else
+#include <bsd/stdlib.h>
+#endif
+
+#if LUA_VERSION_NUM < 502
+static void luaL_setfuncs(lua_State *L, const luaL_Reg *l, int nup) {
+  for (; l->name; l++) {
+    for (int i = 0; i < nup; i++) lua_pushvalue(L, -nup);
+    lua_pushcclosure(L, l->func, nup);
+    lua_setfield(L, -(nup + 2), l->name);
+  }
+  lua_pop(L, nup);
+}
+#endif
+
 #define MT_IDENTITY "tk_crypto_identity"
 #define MT_KEY "tk_crypto_key"
 #define VERSION 0x01
