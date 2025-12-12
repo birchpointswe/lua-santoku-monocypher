@@ -14,8 +14,6 @@ static void arc4random_buf(void *buf, size_t n) {
     HEAPU8.set(arr, $0);
   }, buf, n);
 }
-#else
-#include <bsd/stdlib.h>
 #endif
 
 #if LUA_VERSION_NUM < 502
