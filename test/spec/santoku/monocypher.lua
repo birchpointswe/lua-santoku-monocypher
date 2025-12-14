@@ -102,7 +102,7 @@ test("generate passphrase", function ()
   local secret = crypto.generate()
   assert(type(secret) == "string")
   local words = {}
-  for w in secret:gmatch("[^-]+") do
+  for w in secret:gmatch("%S+") do
     words[#words + 1] = w
   end
   assert(#words == 6)
