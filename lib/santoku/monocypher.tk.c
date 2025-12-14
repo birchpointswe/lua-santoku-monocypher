@@ -19,7 +19,6 @@ static void arc4random_buf(void *buf, size_t n) {
 #define MT_IDENTITY "tk_crypto_identity"
 #define MT_KEY "tk_crypto_key"
 #define VERSION 0x01
-#define PBKDF2_ITERATIONS 600000
 
 typedef struct {
   uint8_t sub[32];
@@ -171,10 +170,11 @@ static int l_derive_key (lua_State *L) {
   size_t len;
   const char *secret = luaL_checklstring(L, 1, &len);
   tk_identity_t *id = luaL_checkudata(L, 2, MT_IDENTITY);
+  unsigned int iterations = tk_lua_optunsigned(L, 3, "iterations", 100000);
   tk_key_t *key = tk_lua_newuserdata(L, tk_key_t, MT_KEY, NULL, key_gc);
   char *buf = malloc(len + 16);
   sprintf(buf, "%s%s", secret, "encryption");
-  pbkdf2_sha256(buf, strlen(buf), id->salt, 32, PBKDF2_ITERATIONS, key->key);
+  pbkdf2_sha256(buf, strlen(buf), id->salt, 32, iterations, key->key);
   free(buf);
   return 1;
 }
