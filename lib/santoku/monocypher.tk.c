@@ -103,7 +103,7 @@ static int l_generate (lua_State *L) {
       dice[j] = '1' + (r % 6);
     }
     lua_getfield(L, lua_upvalueindex(1), dice);
-    if (i > 0) strcat(result, "-");
+    if (i > 0) strcat(result, " ");
     strcat(result, lua_tostring(L, -1));
     lua_pop(L, 1);
   }
@@ -118,7 +118,7 @@ static int l_validate (lua_State *L) {
   luaL_checktype(L, lua_upvalueindex(1), LUA_TTABLE); // wordset
   int word_count = 0, all_valid = 1;
   char *copy = strdup(secret), *p = copy;
-  for (char *tok = strtok(p, " -"); tok; tok = strtok(NULL, " -")) {
+  for (char *tok = strtok(p, " -_."); tok; tok = strtok(NULL, " -_.")) {
     word_count++;
     for (char *c = tok; *c; c++) *c = tolower(*c);
     lua_getfield(L, lua_upvalueindex(1), tok);
