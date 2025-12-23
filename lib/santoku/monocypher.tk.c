@@ -350,6 +350,21 @@ static int l_key_decrypt(lua_State *L) {
   return 1;
 }
 
+// crypto.hmac_sha256(key, message) -> hex string
+static int l_hmac_sha256(lua_State *L) {
+  size_t key_len, msg_len;
+  const char *key = luaL_checklstring(L, 1, &key_len);
+  const char *msg = luaL_checklstring(L, 2, &msg_len);
+  uint8_t out[32];
+  hmac_sha256((const uint8_t *)key, key_len, (const uint8_t *)msg, msg_len, out);
+  char hex[65];
+  for (int i = 0; i < 32; i++) {
+    sprintf(hex + i * 2, "%02x", out[i]);
+  }
+  lua_pushlstring(L, hex, 64);
+  return 1;
+}
+
 // crypto.verify_request(public_key_b64, signature_b64, sub_b64, body)
 static int l_verify_request(lua_State *L) {
   size_t pk_b64_len, sig_b64_len;
@@ -399,6 +414,7 @@ static luaL_Reg module_funcs[] = {
   {"import_identity", l_import_identity},
   {"import_key", l_import_key},
   {"verify_request", l_verify_request},
+  {"hmac_sha256", l_hmac_sha256},
   {NULL, NULL}
 };
 
