@@ -1,6 +1,6 @@
 local env = {
   name = "santoku-monocypher",
-  version = "0.0.12-1",
+  version = "0.0.13-1",
   license = "MIT",
   public = true,
   cflags = {
@@ -9,7 +9,7 @@ local env = {
   ldflags = {},
   dependencies = {
     "lua == 5.1",
-    "santoku >= 0.0.314-1"
+    "santoku >= 0.0.316-1"
   },
 }
 
