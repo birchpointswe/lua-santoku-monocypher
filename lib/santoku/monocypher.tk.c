@@ -1,9 +1,6 @@
 #include <santoku/lua/utils.h>
-#include <string.h>
-#include <stdlib.h>
+#include "monocypher.h"
 #include <ctype.h>
-#include <monocypher.h>
-#include <sha256.h>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -16,20 +13,9 @@ static void arc4random_buf(void *buf, size_t n) {
 }
 #endif
 
-#define MT_IDENTITY "tk_crypto_identity"
-#define MT_KEY "tk_crypto_key"
+#define MT_IDENTITY TK_MT_IDENTITY
+#define MT_KEY TK_MT_KEY
 #define VERSION 0x01
-
-typedef struct {
-  uint8_t sub[32];
-  uint8_t salt[32];
-  uint8_t signing_key[64];
-  uint8_t public_key[32];
-} tk_identity_t;
-
-typedef struct {
-  uint8_t key[32];
-} tk_key_t;
 
 static void sha256 (const char *data, size_t len, uint8_t *out) {
   SHA256_CTX ctx;
@@ -63,21 +49,6 @@ static void hmac_sha256 (const uint8_t *key, size_t key_len, const uint8_t *msg,
   sha256_final(&ctx, out);
 }
 
-static void pbkdf2_sha256 (const char *pass, size_t pass_len, const uint8_t *salt, size_t salt_len, int iterations, uint8_t *out) {
-  uint8_t asalt[salt_len + 4];
-  memcpy(asalt, salt, salt_len);
-  asalt[salt_len] = 0; asalt[salt_len+1] = 0;
-  asalt[salt_len+2] = 0; asalt[salt_len+3] = 1;
-
-  uint8_t u[32], t[32];
-  hmac_sha256((const uint8_t *)pass, pass_len, asalt, salt_len + 4, u);
-  memcpy(t, u, 32);
-  for (int i = 1; i < iterations; i++) {
-    hmac_sha256((const uint8_t *)pass, pass_len, u, 32, u);
-    for (int j = 0; j < 32; j++) t[j] ^= u[j];
-  }
-  memcpy(out, t, 32);
-}
 
 static int identity_gc (lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
@@ -170,11 +141,16 @@ static int l_derive_key (lua_State *L) {
   size_t len;
   const char *secret = luaL_checklstring(L, 1, &len);
   tk_identity_t *id = luaL_checkudata(L, 2, MT_IDENTITY);
-  unsigned int iterations = tk_lua_optunsigned(L, 3, "iterations", 100000);
+  uint32_t nb_blocks = tk_lua_optunsigned(L, 3, "memory", 65536);
+  uint32_t nb_passes = tk_lua_optunsigned(L, 4, "passes", 3);
   tk_key_t *key = tk_lua_newuserdata(L, tk_key_t, MT_KEY, NULL, key_gc);
   char *buf = malloc(len + 16);
   sprintf(buf, "%s%s", secret, "encryption");
-  pbkdf2_sha256(buf, strlen(buf), id->salt, 32, iterations, key->key);
+  void *work_area = malloc((size_t)nb_blocks * 1024);
+  crypto_argon2_config config = { CRYPTO_ARGON2_ID, nb_blocks, nb_passes, 1 };
+  crypto_argon2_inputs inputs = { (const uint8_t *)buf, id->salt, strlen(buf), 32 };
+  crypto_argon2(key->key, 32, work_area, config, inputs, crypto_argon2_no_extras);
+  free(work_area);
   free(buf);
   return 1;
 }
@@ -350,6 +326,21 @@ static int l_key_decrypt(lua_State *L) {
   return 1;
 }
 
+// key:hmac(message) -> hex string
+static int l_key_hmac(lua_State *L) {
+  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  size_t msg_len;
+  const char *msg = luaL_checklstring(L, 2, &msg_len);
+  uint8_t out[32];
+  hmac_sha256(k->key, 32, (const uint8_t *)msg, msg_len, out);
+  char hex[65];
+  for (int i = 0; i < 32; i++) {
+    sprintf(hex + i * 2, "%02x", out[i]);
+  }
+  lua_pushlstring(L, hex, 64);
+  return 1;
+}
+
 // crypto.hmac_sha256(key, message) -> hex string
 static int l_hmac_sha256(lua_State *L) {
   size_t key_len, msg_len;
@@ -405,6 +396,7 @@ static luaL_Reg key_methods[] = {
   {"export", l_key_export},
   {"encrypt", l_key_encrypt},
   {"decrypt", l_key_decrypt},
+  {"hmac", l_key_hmac},
   {NULL, NULL}
 };
 
