@@ -1,5 +1,5 @@
 #include <santoku/lua/utils.h>
-#include "monocypher.h"
+#include <santoku/monocypher.h>
 #include <ctype.h>
 
 #ifdef __EMSCRIPTEN__
