@@ -51,12 +51,6 @@
 // with this software.  If not, see
 // <https://creativecommons.org/publicdomain/zero/1.0/>
 
-#include "monocypher.h"
-
-#ifdef MONOCYPHER_CPP_NAMESPACE
-namespace MONOCYPHER_CPP_NAMESPACE {
-#endif
-
 /////////////////
 /// Utilities ///
 /////////////////
@@ -84,12 +78,12 @@ static const u8 zero[128] = {0};
 // Basically, it's how many bytes we need to add to "align" x.
 // Only works when pow_2 is a power of 2.
 // Note: we use ~x+1 instead of -x to avoid compiler warnings
-static size_t align(size_t x, size_t pow_2)
+static inline size_t align(size_t x, size_t pow_2)
 {
 	return (~x + 1) & (pow_2 - 1);
 }
 
-static u32 load24_le(const u8 s[3])
+static inline u32 load24_le(const u8 s[3])
 {
 	return
 		((u32)s[0] <<  0) |
@@ -97,7 +91,7 @@ static u32 load24_le(const u8 s[3])
 		((u32)s[2] << 16);
 }
 
-static u32 load32_le(const u8 s[4])
+static inline u32 load32_le(const u8 s[4])
 {
 	return
 		((u32)s[0] <<  0) |
@@ -106,12 +100,12 @@ static u32 load32_le(const u8 s[4])
 		((u32)s[3] << 24);
 }
 
-static u64 load64_le(const u8 s[8])
+static inline u64 load64_le(const u8 s[8])
 {
 	return load32_le(s) | ((u64)load32_le(s+4) << 32);
 }
 
-static void store32_le(u8 out[4], u32 in)
+static inline void store32_le(u8 out[4], u32 in)
 {
 	out[0] =  in        & 0xff;
 	out[1] = (in >>  8) & 0xff;
@@ -119,29 +113,29 @@ static void store32_le(u8 out[4], u32 in)
 	out[3] = (in >> 24) & 0xff;
 }
 
-static void store64_le(u8 out[8], u64 in)
+static inline void store64_le(u8 out[8], u64 in)
 {
 	store32_le(out    , (u32)in );
 	store32_le(out + 4, in >> 32);
 }
 
-static void load32_le_buf (u32 *dst, const u8 *src, size_t size) {
+static inline void load32_le_buf (u32 *dst, const u8 *src, size_t size) {
 	FOR(i, 0, size) { dst[i] = load32_le(src + i*4); }
 }
-static void load64_le_buf (u64 *dst, const u8 *src, size_t size) {
+static inline void load64_le_buf (u64 *dst, const u8 *src, size_t size) {
 	FOR(i, 0, size) { dst[i] = load64_le(src + i*8); }
 }
-static void store32_le_buf(u8 *dst, const u32 *src, size_t size) {
+static inline void store32_le_buf(u8 *dst, const u32 *src, size_t size) {
 	FOR(i, 0, size) { store32_le(dst + i*4, src[i]); }
 }
-static void store64_le_buf(u8 *dst, const u64 *src, size_t size) {
+static inline void store64_le_buf(u8 *dst, const u64 *src, size_t size) {
 	FOR(i, 0, size) { store64_le(dst + i*8, src[i]); }
 }
 
-static u64 rotr64(u64 x, u64 n) { return (x >> n) ^ (x << (64 - n)); }
-static u32 rotl32(u32 x, u32 n) { return (x << n) ^ (x >> (32 - n)); }
+static inline u64 rotr64(u64 x, u64 n) { return (x >> n) ^ (x << (64 - n)); }
+static inline u32 rotl32(u32 x, u32 n) { return (x << n) ^ (x >> (32 - n)); }
 
-static int neq0(u64 diff)
+static inline int neq0(u64 diff)
 {
 	// constant time comparison to zero
 	// return diff != 0 ? -1 : 0
@@ -149,18 +143,18 @@ static int neq0(u64 diff)
 	return (1 & ((half - 1) >> 32)) - 1;
 }
 
-static u64 x16(const u8 a[16], const u8 b[16])
+static inline u64 x16(const u8 a[16], const u8 b[16])
 {
 	return (load64_le(a + 0) ^ load64_le(b + 0))
 		|  (load64_le(a + 8) ^ load64_le(b + 8));
 }
-static u64 x32(const u8 a[32],const u8 b[32]){return x16(a,b)| x16(a+16, b+16);}
-static u64 x64(const u8 a[64],const u8 b[64]){return x32(a,b)| x32(a+32, b+32);}
-int crypto_verify16(const u8 a[16], const u8 b[16]){ return neq0(x16(a, b)); }
-int crypto_verify32(const u8 a[32], const u8 b[32]){ return neq0(x32(a, b)); }
-int crypto_verify64(const u8 a[64], const u8 b[64]){ return neq0(x64(a, b)); }
+static inline u64 x32(const u8 a[32],const u8 b[32]){return x16(a,b)| x16(a+16, b+16);}
+static inline u64 x64(const u8 a[64],const u8 b[64]){return x32(a,b)| x32(a+32, b+32);}
+static inline int crypto_verify16(const u8 a[16], const u8 b[16]){ return neq0(x16(a, b)); }
+static inline int crypto_verify32(const u8 a[32], const u8 b[32]){ return neq0(x32(a, b)); }
+static inline int crypto_verify64(const u8 a[64], const u8 b[64]){ return neq0(x64(a, b)); }
 
-void crypto_wipe(void *secret, size_t size)
+static inline void crypto_wipe(void *secret, size_t size)
 {
 	volatile u8 *v_secret = (u8*)secret;
 	ZERO(v_secret, size);
@@ -175,7 +169,7 @@ void crypto_wipe(void *secret, size_t size)
 	a += b;  d = rotl32(d ^ a,  8); \
 	c += d;  b = rotl32(b ^ c,  7)
 
-static void chacha20_rounds(u32 out[16], const u32 in[16])
+static inline void chacha20_rounds(u32 out[16], const u32 in[16])
 {
 	// The temporary variables make Chacha20 10% faster.
 	u32 t0  = in[ 0];  u32 t1  = in[ 1];  u32 t2  = in[ 2];  u32 t3  = in[ 3];
@@ -201,7 +195,7 @@ static void chacha20_rounds(u32 out[16], const u32 in[16])
 
 static const u8 *chacha20_constant = (const u8*)"expand 32-byte k"; // 16 bytes
 
-void crypto_chacha20_h(u8 out[32], const u8 key[32], const u8 in [16])
+static inline void crypto_chacha20_h(u8 out[32], const u8 key[32], const u8 in [16])
 {
 	u32 block[16];
 	load32_le_buf(block     , chacha20_constant, 4);
@@ -216,7 +210,7 @@ void crypto_chacha20_h(u8 out[32], const u8 key[32], const u8 in [16])
 	WIPE_BUFFER(block);
 }
 
-u64 crypto_chacha20_djb(u8 *cipher_text, const u8 *plain_text,
+static inline u64 crypto_chacha20_djb(u8 *cipher_text, const u8 *plain_text,
                         size_t text_size, const u8 key[32], const u8 nonce[8],
                         u64 ctr)
 {
@@ -275,7 +269,7 @@ u64 crypto_chacha20_djb(u8 *cipher_text, const u8 *plain_text,
 	return ctr;
 }
 
-u32 crypto_chacha20_ietf(u8 *cipher_text, const u8 *plain_text,
+static inline u32 crypto_chacha20_ietf(u8 *cipher_text, const u8 *plain_text,
                          size_t text_size,
                          const u8 key[32], const u8 nonce[12], u32 ctr)
 {
@@ -284,7 +278,7 @@ u32 crypto_chacha20_ietf(u8 *cipher_text, const u8 *plain_text,
 	                                key, nonce + 4, big_ctr);
 }
 
-u64 crypto_chacha20_x(u8 *cipher_text, const u8 *plain_text,
+static inline u64 crypto_chacha20_x(u8 *cipher_text, const u8 *plain_text,
                       size_t text_size,
                       const u8 key[32], const u8 nonce[24], u64 ctr)
 {
@@ -307,7 +301,7 @@ u64 crypto_chacha20_x(u8 *cipher_text, const u8 *plain_text,
 //   end    <= 1
 // Postcondition:
 //   ctx->h <= 4_ffffffff_ffffffff_ffffffff_ffffffff
-static void poly_block(crypto_poly1305_ctx *ctx, const u8 in[16], unsigned end)
+static inline void poly_block(crypto_poly1305_ctx *ctx, const u8 in[16], unsigned end)
 {
 	u32 s[4];
 	load32_le_buf(s, in, 4);
@@ -377,7 +371,7 @@ static void poly_block(crypto_poly1305_ctx *ctx, const u8 in[16], unsigned end)
 	//- CQFD Poly1305
 }
 
-void crypto_poly1305_init(crypto_poly1305_ctx *ctx, const u8 key[32])
+static inline void crypto_poly1305_init(crypto_poly1305_ctx *ctx, const u8 key[32])
 {
 	ZERO(ctx->h, 5); // Initial hash is zero
 	ctx->c_idx = 0;
@@ -388,7 +382,7 @@ void crypto_poly1305_init(crypto_poly1305_ctx *ctx, const u8 key[32])
 	FOR (i, 1, 4) { ctx->r[i] &= 0x0ffffffc; }
 }
 
-void crypto_poly1305_update(crypto_poly1305_ctx *ctx,
+static inline void crypto_poly1305_update(crypto_poly1305_ctx *ctx,
                             const u8 *message, size_t message_size)
 {
 	// Align ourselves with block boundaries
@@ -421,7 +415,7 @@ void crypto_poly1305_update(crypto_poly1305_ctx *ctx,
 	}
 }
 
-void crypto_poly1305_final(crypto_poly1305_ctx *ctx, u8 mac[16])
+static inline void crypto_poly1305_final(crypto_poly1305_ctx *ctx, u8 mac[16])
 {
 	// Process the last block (if any)
 	// We move the final 1 according to remaining input length
@@ -450,7 +444,7 @@ void crypto_poly1305_final(crypto_poly1305_ctx *ctx, u8 mac[16])
 	WIPE_CTX(ctx);
 }
 
-void crypto_poly1305(u8     mac[16],  const u8 *message,
+static inline void crypto_poly1305(u8     mac[16],  const u8 *message,
                      size_t message_size, const u8  key[32])
 {
 	crypto_poly1305_ctx ctx;
@@ -469,7 +463,7 @@ static const u64 iv[8] = {
 	0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
 };
 
-static void blake2b_compress(crypto_blake2b_ctx *ctx, int is_last_block)
+static inline void blake2b_compress(crypto_blake2b_ctx *ctx, int is_last_block)
 {
 	static const u8 sigma[12][16] = {
 		{  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15 },
@@ -538,7 +532,7 @@ static void blake2b_compress(crypto_blake2b_ctx *ctx, int is_last_block)
 	ctx->hash[6] ^= v6 ^ v14;  ctx->hash[7] ^= v7 ^ v15;
 }
 
-void crypto_blake2b_keyed_init(crypto_blake2b_ctx *ctx, size_t hash_size,
+static inline void crypto_blake2b_keyed_init(crypto_blake2b_ctx *ctx, size_t hash_size,
                                const u8 *key, size_t key_size)
 {
 	// initial hash
@@ -561,12 +555,12 @@ void crypto_blake2b_keyed_init(crypto_blake2b_ctx *ctx, size_t hash_size,
 	}
 }
 
-void crypto_blake2b_init(crypto_blake2b_ctx *ctx, size_t hash_size)
+static inline void crypto_blake2b_init(crypto_blake2b_ctx *ctx, size_t hash_size)
 {
 	crypto_blake2b_keyed_init(ctx, hash_size, 0, 0);
 }
 
-void crypto_blake2b_update(crypto_blake2b_ctx *ctx,
+static inline void crypto_blake2b_update(crypto_blake2b_ctx *ctx,
                            const u8 *message, size_t message_size)
 {
 	// Avoid undefined NULL pointer increments with empty messages
@@ -634,7 +628,7 @@ void crypto_blake2b_update(crypto_blake2b_ctx *ctx,
 	}
 }
 
-void crypto_blake2b_final(crypto_blake2b_ctx *ctx, u8 *hash)
+static inline void crypto_blake2b_final(crypto_blake2b_ctx *ctx, u8 *hash)
 {
 	blake2b_compress(ctx, 1); // compress the last block
 	size_t hash_size = MIN(ctx->hash_size, 64);
@@ -646,7 +640,7 @@ void crypto_blake2b_final(crypto_blake2b_ctx *ctx, u8 *hash)
 	WIPE_CTX(ctx);
 }
 
-void crypto_blake2b_keyed(u8 *hash,          size_t hash_size,
+static inline void crypto_blake2b_keyed(u8 *hash,          size_t hash_size,
                           const u8 *key,     size_t key_size,
                           const u8 *message, size_t message_size)
 {
@@ -656,7 +650,7 @@ void crypto_blake2b_keyed(u8 *hash,          size_t hash_size,
 	crypto_blake2b_final     (&ctx, hash);
 }
 
-void crypto_blake2b(u8 *hash, size_t hash_size, const u8 *msg, size_t msg_size)
+static inline void crypto_blake2b(u8 *hash, size_t hash_size, const u8 *msg, size_t msg_size)
 {
 	crypto_blake2b_keyed(hash, hash_size, 0, 0, msg, msg_size);
 }
@@ -670,7 +664,7 @@ void crypto_blake2b(u8 *hash, size_t hash_size, const u8 *msg, size_t msg_size)
 typedef struct { u64 a[128]; } blk;
 
 // updates a BLAKE2 hash with a 32 bit word, little endian.
-static void blake_update_32(crypto_blake2b_ctx *ctx, u32 input)
+static inline void blake_update_32(crypto_blake2b_ctx *ctx, u32 input)
 {
 	u8 buf[4];
 	store32_le(buf, input);
@@ -678,7 +672,7 @@ static void blake_update_32(crypto_blake2b_ctx *ctx, u32 input)
 	WIPE_BUFFER(buf);
 }
 
-static void blake_update_32_buf(crypto_blake2b_ctx *ctx,
+static inline void blake_update_32_buf(crypto_blake2b_ctx *ctx,
                                 const u8 *buf, u32 size)
 {
 	blake_update_32(ctx, size);
@@ -686,15 +680,15 @@ static void blake_update_32_buf(crypto_blake2b_ctx *ctx,
 }
 
 
-static void copy_block(blk *o,const blk*in){FOR(i, 0, 128) o->a[i]  = in->a[i];}
-static void  xor_block(blk *o,const blk*in){FOR(i, 0, 128) o->a[i] ^= in->a[i];}
+static inline void copy_block(blk *o,const blk*in){FOR(i, 0, 128) o->a[i]  = in->a[i];}
+static inline void  xor_block(blk *o,const blk*in){FOR(i, 0, 128) o->a[i] ^= in->a[i];}
 
 // Hash with a virtually unlimited digest size.
 // Doesn't extract more entropy than the base hash function.
 // Mainly used for filling a whole kilobyte block with pseudo-random bytes.
 // (One could use a stream cipher with a seed hash as the key, but
 //  this would introduce another dependency —and point of failure.)
-static void extended_hash(u8       *digest, u32 digest_size,
+static inline void extended_hash(u8       *digest, u32 digest_size,
                           const u8 *input , u32 input_size)
 {
 	crypto_blake2b_ctx ctx;
@@ -735,7 +729,7 @@ static void extended_hash(u8       *digest, u32 digest_size,
 	G(v2, v7,  v8, v13);  G(v3, v4,  v9, v14)
 
 // Core of the compression function G.  Computes Z from R in place.
-static void g_rounds(blk *b)
+static inline void g_rounds(blk *b)
 {
 	// column rounds (work_block = Q)
 	for (int i = 0; i < 128; i += 16) {
@@ -753,9 +747,7 @@ static void g_rounds(blk *b)
 	}
 }
 
-const crypto_argon2_extras crypto_argon2_no_extras = { 0, 0, 0, 0 };
-
-void crypto_argon2(u8 *hash, u32 hash_size, void *work_area,
+static inline void crypto_argon2(u8 *hash, u32 hash_size, void *work_area,
                    crypto_argon2_config config,
                    crypto_argon2_inputs inputs,
                    crypto_argon2_extras extras)
@@ -971,15 +963,15 @@ static const fe A2      = {
 	12721188, 3529, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-static void fe_0(fe h) {           ZERO(h  , 10); }
-static void fe_1(fe h) { h[0] = 1; ZERO(h+1,  9); }
+static inline void fe_0(fe h) {           ZERO(h  , 10); }
+static inline void fe_1(fe h) { h[0] = 1; ZERO(h+1,  9); }
 
-static void fe_copy(fe h,const fe f           ){FOR(i,0,10) h[i] =  f[i];      }
-static void fe_neg (fe h,const fe f           ){FOR(i,0,10) h[i] = -f[i];      }
-static void fe_add (fe h,const fe f,const fe g){FOR(i,0,10) h[i] = f[i] + g[i];}
-static void fe_sub (fe h,const fe f,const fe g){FOR(i,0,10) h[i] = f[i] - g[i];}
+static inline void fe_copy(fe h,const fe f           ){FOR(i,0,10) h[i] =  f[i];      }
+static inline void fe_neg (fe h,const fe f           ){FOR(i,0,10) h[i] = -f[i];      }
+static inline void fe_add (fe h,const fe f,const fe g){FOR(i,0,10) h[i] = f[i] + g[i];}
+static inline void fe_sub (fe h,const fe f,const fe g){FOR(i,0,10) h[i] = f[i] - g[i];}
 
-static void fe_cswap(fe f, fe g, int b)
+static inline void fe_cswap(fe f, fe g, int b)
 {
 	i32 mask = -b; // -1 = 0xffffffff
 	FOR (i, 0, 10) {
@@ -989,7 +981,7 @@ static void fe_cswap(fe f, fe g, int b)
 	}
 }
 
-static void fe_ccopy(fe f, const fe g, int b)
+static inline void fe_ccopy(fe f, const fe g, int b)
 {
 	i32 mask = -b; // -1 = 0xffffffff
 	FOR (i, 0, 10) {
@@ -1130,7 +1122,7 @@ static void fe_ccopy(fe f, const fe g, int b)
 // which uses that bit to denote the sign of x.
 // Elligator however uses positive representatives,
 // which means ignoring 2 bits instead.
-static void fe_frombytes_mask(fe h, const u8 s[32], unsigned nb_mask)
+static inline void fe_frombytes_mask(fe h, const u8 s[32], unsigned nb_mask)
 {
 	u32 mask = 0xffffff >> nb_mask;
 	i64 t0 =  load32_le(s);                    // t0 < 2^32
@@ -1146,7 +1138,7 @@ static void fe_frombytes_mask(fe h, const u8 s[32], unsigned nb_mask)
 	FE_CARRY;                                  // Carry precondition OK
 }
 
-static void fe_frombytes(fe h, const u8 s[32])
+static inline void fe_frombytes(fe h, const u8 s[32])
 {
 	fe_frombytes_mask(h, s, 1);
 }
@@ -1163,7 +1155,7 @@ static void fe_frombytes(fe h, const u8 s[32])
 //   limbs down to their tight positive range.
 // - If h is negative, we also need to add 2^255-19 to it.
 //   Or just remove 19 and chop off any excess bit.
-static void fe_tobytes(u8 s[32], const fe h)
+static inline void fe_tobytes(u8 s[32], const fe h)
 {
 	i32 t[10];
 	COPY(t, h, 10);
@@ -1207,7 +1199,7 @@ static void fe_tobytes(u8 s[32], const fe h)
 //
 //   |g0|, |g2|, |g4|, |g6|, |g8|  <  1.65 * 2^26
 //   |g1|, |g3|, |g5|, |g7|, |g9|  <  1.65 * 2^25
-static void fe_mul_small(fe h, const fe f, i32 g)
+static inline void fe_mul_small(fe h, const fe f, i32 g)
 {
 	i64 t0 = f[0] * (i64) g;  i64 t1 = f[1] * (i64) g;
 	i64 t2 = f[2] * (i64) g;  i64 t3 = f[3] * (i64) g;
@@ -1227,7 +1219,7 @@ static void fe_mul_small(fe h, const fe f, i32 g)
 //
 //   |g0|, |g2|, |g4|, |g6|, |g8|  <  1.65 * 2^26
 //   |g1|, |g3|, |g5|, |g7|, |g9|  <  1.65 * 2^25
-static void fe_mul(fe h, const fe f, const fe g)
+static inline void fe_mul(fe h, const fe f, const fe g)
 {
 	// Everything is unrolled and put in temporary variables.
 	// We could roll the loop, but that would make curve25519 twice as slow.
@@ -1283,7 +1275,7 @@ static void fe_mul(fe h, const fe f, const fe g)
 //   |f1|, |f3|, |f5|, |f7|, |f9|  <  1.65 * 2^25
 //
 // Note: we could use fe_mul() for this, but this is significantly faster
-static void fe_sq(fe h, const fe f)
+static inline void fe_sq(fe h, const fe f)
 {
 	i32 f0 = f[0]; i32 f1 = f[1]; i32 f2 = f[2]; i32 f3 = f[3]; i32 f4 = f[4];
 	i32 f5 = f[5]; i32 f6 = f[6]; i32 f7 = f[7]; i32 f8 = f[8]; i32 f9 = f[9];
@@ -1330,7 +1322,7 @@ static void fe_sq(fe h, const fe f)
 }
 
 //  Parity check.  Returns 0 if even, 1 if odd
-static int fe_isodd(const fe f)
+static inline int fe_isodd(const fe f)
 {
 	u8 s[32];
 	fe_tobytes(s, f);
@@ -1340,7 +1332,7 @@ static int fe_isodd(const fe f)
 }
 
 // Returns 1 if equal, 0 if not equal
-static int fe_isequal(const fe f, const fe g)
+static inline int fe_isequal(const fe f, const fe g)
 {
 	u8 fs[32];
 	u8 gs[32];
@@ -1409,7 +1401,7 @@ static int fe_isequal(const fe f, const fe g)
 //      x^((p-5)/8) * sqrt(-1) = sqrt( sqrt(-1)/x) * sqrt(-1)^2
 //      x^((p-5)/8) * sqrt(-1) = sqrt( sqrt(-1)/x) * -1
 //      x^((p-5)/8) * sqrt(-1) = -sqrt(sqrt(-1)/x) or sqrt(sqrt(-1)/x)
-static int invsqrt(fe isr, const fe x)
+static inline int invsqrt(fe isr, const fe x)
 {
 	fe t0, t1, t2;
 
@@ -1460,7 +1452,7 @@ static int invsqrt(fe isr, const fe x)
 //
 // A fully optimised exponentiation by p-1 would save 6 field
 // multiplications, but it would require more code.
-static void fe_invert(fe out, const fe x)
+static inline void fe_invert(fe out, const fe x)
 {
 	fe tmp;
 	fe_sq(tmp, x);
@@ -1471,7 +1463,7 @@ static void fe_invert(fe out, const fe x)
 }
 
 // trim a scalar for scalar multiplication
-void crypto_eddsa_trim_scalar(u8 out[32], const u8 in[32])
+static inline void crypto_eddsa_trim_scalar(u8 out[32], const u8 in[32])
 {
 	COPY(out, in, 32);
 	out[ 0] &= 248;
@@ -1480,7 +1472,7 @@ void crypto_eddsa_trim_scalar(u8 out[32], const u8 in[32])
 }
 
 // get bit from scalar at position i
-static int scalar_bit(const u8 s[32], int i)
+static inline int scalar_bit(const u8 s[32], int i)
 {
 	if (i < 0) { return 0; } // handle -1 for sliding windows
 	return (s[i>>3] >> (i&7)) & 1;
@@ -1489,7 +1481,7 @@ static int scalar_bit(const u8 s[32], int i)
 ///////////////
 /// X-25519 /// Taken from SUPERCOP's ref10 implementation.
 ///////////////
-static void scalarmult(u8 q[32], const u8 scalar[32], const u8 p[32],
+static inline void scalarmult(u8 q[32], const u8 scalar[32], const u8 p[32],
                        int nb_bits)
 {
 	// computes the scalar product
@@ -1548,7 +1540,7 @@ static void scalarmult(u8 q[32], const u8 scalar[32], const u8 p[32],
 	WIPE_BUFFER(x3);  WIPE_BUFFER(z3);  WIPE_BUFFER(t1);
 }
 
-void crypto_x25519(u8       raw_shared_secret[32],
+static inline void crypto_x25519(u8       raw_shared_secret[32],
                    const u8 your_secret_key  [32],
                    const u8 their_public_key [32])
 {
@@ -1559,7 +1551,7 @@ void crypto_x25519(u8       raw_shared_secret[32],
 	WIPE_BUFFER(e);
 }
 
-void crypto_x25519_public_key(u8       public_key[32],
+static inline void crypto_x25519_public_key(u8       public_key[32],
                               const u8 secret_key[32])
 {
 	static const u8 base_point[32] = {9};
@@ -1575,7 +1567,7 @@ static const u32 L[8] = {
 };
 
 //  p = a*b + p
-static void multiply(u32 p[16], const u32 a[8], const u32 b[8])
+static inline void multiply(u32 p[16], const u32 a[8], const u32 b[8])
 {
 	FOR (i, 0, 8) {
 		u64 carry = 0;
@@ -1588,7 +1580,7 @@ static void multiply(u32 p[16], const u32 a[8], const u32 b[8])
 	}
 }
 
-static int is_above_l(const u32 x[8])
+static inline int is_above_l(const u32 x[8])
 {
 	// We work with L directly, in a 2's complement encoding
 	// (-L == ~L + 1)
@@ -1604,7 +1596,7 @@ static int is_above_l(const u32 x[8])
 // if x < l     , then r = x
 // if l <= x 2*l, then r = x-l
 // otherwise the result will be wrong
-static void remove_l(u32 r[8], const u32 x[8])
+static inline void remove_l(u32 r[8], const u32 x[8])
 {
 	u64 carry = (u64)is_above_l(x);
 	u32 mask  = ~(u32)carry + 1; // carry == 0 or 1
@@ -1616,7 +1608,7 @@ static void remove_l(u32 r[8], const u32 x[8])
 }
 
 // Full reduction modulo L (Barrett reduction)
-static void mod_l(u8 reduced[32], const u32 x[16])
+static inline void mod_l(u8 reduced[32], const u32 x[16])
 {
 	static const u32 r[9] = {
 		0x0a2c131b,0xed9ce5a3,0x086329a7,0x2106215d,
@@ -1660,7 +1652,7 @@ static void mod_l(u8 reduced[32], const u32 x[16])
 	WIPE_BUFFER(xr);
 }
 
-void crypto_eddsa_reduce(u8 reduced[32], const u8 expanded[64])
+static inline void crypto_eddsa_reduce(u8 reduced[32], const u8 expanded[64])
 {
 	u32 x[16];
 	load32_le_buf(x, expanded, 16);
@@ -1669,7 +1661,7 @@ void crypto_eddsa_reduce(u8 reduced[32], const u8 expanded[64])
 }
 
 // r = (a * b) + c
-void crypto_eddsa_mul_add(u8 r[32],
+static inline void crypto_eddsa_mul_add(u8 r[32],
                           const u8 a[32], const u8 b[32], const u8 c[32])
 {
 	u32 A[8];  load32_le_buf(A, a, 8);
@@ -1695,7 +1687,7 @@ typedef struct { fe X;  fe Y;  fe Z; fe T;  } ge;
 typedef struct { fe Yp; fe Ym; fe Z; fe T2; } ge_cached;
 typedef struct { fe Yp; fe Ym;       fe T2; } ge_precomp;
 
-static void ge_zero(ge *p)
+static inline void ge_zero(ge *p)
 {
 	fe_0(p->X);
 	fe_1(p->Y);
@@ -1703,7 +1695,7 @@ static void ge_zero(ge *p)
 	fe_0(p->T);
 }
 
-static void ge_tobytes(u8 s[32], const ge *h)
+static inline void ge_tobytes(u8 s[32], const ge *h)
 {
 	fe recip, x, y;
 	fe_invert(recip, h->Z);
@@ -1744,7 +1736,7 @@ static void ge_tobytes(u8 s[32], const ge *h)
 //   isr = invsqrt(num * den)  // abort if not square
 //   x   = num * isr
 // Finally, negate x if its sign is not as specified.
-static int ge_frombytes_neg_vartime(ge *h, const u8 s[32])
+static inline int ge_frombytes_neg_vartime(ge *h, const u8 s[32])
 {
 	fe_frombytes(h->Y, s);
 	fe_1(h->Z);
@@ -1765,7 +1757,7 @@ static int ge_frombytes_neg_vartime(ge *h, const u8 s[32])
 	return 0;
 }
 
-static void ge_cache(ge_cached *c, const ge *p)
+static inline void ge_cache(ge_cached *c, const ge *p)
 {
 	fe_add (c->Yp, p->Y, p->X);
 	fe_sub (c->Ym, p->Y, p->X);
@@ -1775,7 +1767,7 @@ static void ge_cache(ge_cached *c, const ge *p)
 
 // Internal buffers are not wiped! Inputs must not be secret!
 // => Use only to *check* signatures.
-static void ge_add(ge *s, const ge *p, const ge_cached *q)
+static inline void ge_add(ge *s, const ge *p, const ge_cached *q)
 {
 	fe a, b;
 	fe_add(a   , p->Y, p->X );
@@ -1799,7 +1791,7 @@ static void ge_add(ge *s, const ge *p, const ge_cached *q)
 
 // Internal buffers are not wiped! Inputs must not be secret!
 // => Use only to *check* signatures.
-static void ge_sub(ge *s, const ge *p, const ge_cached *q)
+static inline void ge_sub(ge *s, const ge *p, const ge_cached *q)
 {
 	ge_cached neg;
 	fe_copy(neg.Ym, q->Yp);
@@ -1809,7 +1801,7 @@ static void ge_sub(ge *s, const ge *p, const ge_cached *q)
 	ge_add(s, p, &neg);
 }
 
-static void ge_madd(ge *s, const ge *p, const ge_precomp *q, fe a, fe b)
+static inline void ge_madd(ge *s, const ge *p, const ge_precomp *q, fe a, fe b)
 {
 	fe_add(a   , p->Y, p->X );
 	fe_sub(b   , p->Y, p->X );
@@ -1831,7 +1823,7 @@ static void ge_madd(ge *s, const ge *p, const ge_precomp *q, fe a, fe b)
 
 // Internal buffers are not wiped! Inputs must not be secret!
 // => Use only to *check* signatures.
-static void ge_msub(ge *s, const ge *p, const ge_precomp *q, fe a, fe b)
+static inline void ge_msub(ge *s, const ge *p, const ge_precomp *q, fe a, fe b)
 {
 	ge_precomp neg;
 	fe_copy(neg.Ym, q->Yp);
@@ -1840,7 +1832,7 @@ static void ge_msub(ge *s, const ge *p, const ge_precomp *q, fe a, fe b)
 	ge_madd(s, p, &neg, a, b);
 }
 
-static void ge_double(ge *s, const ge *p, ge *q)
+static inline void ge_double(ge *s, const ge *p, ge *q)
 {
 	fe_sq (q->X, p->X);
 	fe_sq (q->Y, p->Y);
@@ -1919,7 +1911,7 @@ typedef struct {
 	u8  next_check; // point at which we must check for a new window
 } slide_ctx;
 
-static void slide_init(slide_ctx *ctx, const u8 scalar[32])
+static inline void slide_init(slide_ctx *ctx, const u8 scalar[32])
 {
 	// scalar is guaranteed to be below L, either because we checked (s),
 	// or because we reduced it modulo L (h_ram). L is under 2^253, so
@@ -1940,7 +1932,7 @@ static void slide_init(slide_ctx *ctx, const u8 scalar[32])
 	ctx->next_digit = -1;
 }
 
-static int slide_step(slide_ctx *ctx, int width, int i, const u8 scalar[32])
+static inline int slide_step(slide_ctx *ctx, int width, int i, const u8 scalar[32])
 {
 	if (i == ctx->next_check) {
 		if (scalar_bit(scalar, i) == scalar_bit(scalar, i - 1)) {
@@ -1970,7 +1962,7 @@ static int slide_step(slide_ctx *ctx, int width, int i, const u8 scalar[32])
 #define B_W_WIDTH 5 // Affects the size of the binary
 #define P_W_SIZE  (1<<(P_W_WIDTH-2))
 
-int crypto_eddsa_check_equation(const u8 signature[64], const u8 public_key[32],
+static inline int crypto_eddsa_check_equation(const u8 signature[64], const u8 public_key[32],
                                 const u8 h[32])
 {
 	ge minus_A; // -public_key
@@ -2140,7 +2132,7 @@ static const ge_precomp b_comb_high[8] = {
 	  -7224648,9258160,1399236,30397584,-5684634,},},
 };
 
-static void lookup_add(ge *p, ge_precomp *tmp_c, fe tmp_a, fe tmp_b,
+static inline void lookup_add(ge *p, ge_precomp *tmp_c, fe tmp_a, fe tmp_b,
                        const ge_precomp comb[8], const u8 scalar[32], int i)
 {
 	u8 teeth = (u8)((scalar_bit(scalar, i)          ) +
@@ -2162,7 +2154,7 @@ static void lookup_add(ge *p, ge_precomp *tmp_c, fe tmp_a, fe tmp_b,
 }
 
 // p = [scalar]B, where B is the base point
-static void ge_scalarmult_base(ge *p, const u8 scalar[32])
+static inline void ge_scalarmult_base(ge *p, const u8 scalar[32])
 {
 	// twin 4-bits signed combs, from Mike Hamburg's
 	// Fast and compact elliptic-curve cryptography (2012)
@@ -2210,7 +2202,7 @@ static void ge_scalarmult_base(ge *p, const u8 scalar[32])
 	WIPE_BUFFER(s_scalar);
 }
 
-void crypto_eddsa_scalarbase(u8 point[32], const u8 scalar[32])
+static inline void crypto_eddsa_scalarbase(u8 point[32], const u8 scalar[32])
 {
 	ge P;
 	ge_scalarmult_base(&P, scalar);
@@ -2218,7 +2210,7 @@ void crypto_eddsa_scalarbase(u8 point[32], const u8 scalar[32])
 	WIPE_CTX(&P);
 }
 
-void crypto_eddsa_key_pair(u8 secret_key[64], u8 public_key[32], u8 seed[32])
+static inline void crypto_eddsa_key_pair(u8 secret_key[64], u8 public_key[32], u8 seed[32])
 {
 	// To allow overlaps, observable writes happen in this order:
 	// 1. seed
@@ -2235,7 +2227,7 @@ void crypto_eddsa_key_pair(u8 secret_key[64], u8 public_key[32], u8 seed[32])
 	WIPE_BUFFER(a);
 }
 
-static void hash_reduce(u8 h[32],
+static inline void hash_reduce(u8 h[32],
                         const u8 *a, size_t a_size,
                         const u8 *b, size_t b_size,
                         const u8 *c, size_t c_size)
@@ -2305,7 +2297,7 @@ static void hash_reduce(u8 h[32],
 //   h              = HASH(R || public_key || message) % L
 //   S              = ((h * a) + r) % L
 //   signature      = R || S
-void crypto_eddsa_sign(u8 signature [64], const u8 secret_key[64],
+static inline void crypto_eddsa_sign(u8 signature [64], const u8 secret_key[64],
                        const u8 *message, size_t message_size)
 {
 	u8 a[64];  // secret scalar and prefix
@@ -2333,7 +2325,7 @@ void crypto_eddsa_sign(u8 signature [64], const u8 secret_key[64],
 //   check that R == [s]B - [h]A
 //
 // The last two steps are done in crypto_eddsa_check_equation()
-int crypto_eddsa_check(const u8  signature[64], const u8 public_key[32],
+static inline int crypto_eddsa_check(const u8  signature[64], const u8 public_key[32],
                        const u8 *message, size_t message_size)
 {
 	u8 h[32];
@@ -2344,7 +2336,7 @@ int crypto_eddsa_check(const u8  signature[64], const u8 public_key[32],
 /////////////////////////
 /// EdDSA <--> X25519 ///
 /////////////////////////
-void crypto_eddsa_to_x25519(u8 x25519[32], const u8 eddsa[32])
+static inline void crypto_eddsa_to_x25519(u8 x25519[32], const u8 eddsa[32])
 {
 	// (u, v) = ((1+y)/(1-y), sqrt(-486664)*u/x)
 	// Only converting y to u, the sign of x is ignored.
@@ -2359,7 +2351,7 @@ void crypto_eddsa_to_x25519(u8 x25519[32], const u8 eddsa[32])
 	WIPE_BUFFER(t2);
 }
 
-void crypto_x25519_to_eddsa(u8 eddsa[32], const u8 x25519[32])
+static inline void crypto_x25519_to_eddsa(u8 eddsa[32], const u8 x25519[32])
 {
 	// (x, y) = (sqrt(-486664)*u/v, (u-1)/(u+1))
 	// Only converting u to y, x is assumed positive.
@@ -2423,7 +2415,7 @@ void crypto_x25519_to_eddsa(u8 eddsa[32], const u8 x25519[32])
 //   L * (x%8)     < 2^255
 //   s             < 2^255
 //   s + L * (x%8) < 2^256
-static void add_xl(u8 s[32], u8 x)
+static inline void add_xl(u8 s[32], u8 x)
 {
 	u64 mod8  = x & 7;
 	u64 carry = 0;
@@ -2447,7 +2439,7 @@ static void add_xl(u8 s[32], u8 x)
 // then multiplied by a point of order 8*L (unlike the base point, which
 // has prime order).  That "dirty" base point is the addition of the
 // regular base point (9), and a point of order 8.
-void crypto_x25519_dirty_small(u8 public_key[32], const u8 secret_key[32])
+static inline void crypto_x25519_dirty_small(u8 public_key[32], const u8 secret_key[32])
 {
 	// Base point of order 8*L
 	// Raw scalar multiplication with it does not clear the cofactor,
@@ -2510,7 +2502,7 @@ void crypto_x25519_dirty_small(u8 public_key[32], const u8 secret_key[32])
 //
 // This is faster than an actual scalar multiplication,
 // and requires less code than naive constant time look up.
-static void select_lop(fe out, const fe x, const fe k, u8 cofactor)
+static inline void select_lop(fe out, const fe x, const fe k, u8 cofactor)
 {
 	fe tmp;
 	fe_0(out);
@@ -2528,7 +2520,7 @@ static void select_lop(fe out, const fe x, const fe k, u8 cofactor)
 // then add a low order point.  The scalar multiplication is done in
 // Edwards space for more speed (*2 compared to the "small" version).
 // The cost is a bigger binary for programs that don't also sign messages.
-void crypto_x25519_dirty_fast(u8 public_key[32], const u8 secret_key[32])
+static inline void crypto_x25519_dirty_fast(u8 public_key[32], const u8 secret_key[32])
 {
 	// Compute clean scalar multiplication
 	u8 scalar[32];
@@ -2625,7 +2617,7 @@ static const fe A = {486662};
 //       u2 = w * -1 * -non_square * r^2
 //       u2 = w * non_square * r^2
 //       u2 = u
-void crypto_elligator_map(u8 curve[32], const u8 hidden[32])
+static inline void crypto_elligator_map(u8 curve[32], const u8 hidden[32])
 {
 	fe r, u, t1, t2, t3;
 	fe_frombytes_mask(r, hidden, 2); // r is encoded in 254 bits.
@@ -2685,7 +2677,7 @@ void crypto_elligator_map(u8 curve[32], const u8 hidden[32])
 // If v is negative, we return isr * (u+A):
 //   isr * (u+A) = sqrt(-1     / (non_square * u * (u+A)) * (u+A)
 //   isr * (u+A) = sqrt(-(u+A) / (non_square * u)
-int crypto_elligator_rev(u8 hidden[32], const u8 public_key[32], u8 tweak)
+static inline int crypto_elligator_rev(u8 hidden[32], const u8 public_key[32], u8 tweak)
 {
 	fe t1, t2, t3;
 	fe_frombytes(t1, public_key);    // t1 = u
@@ -2716,7 +2708,7 @@ int crypto_elligator_rev(u8 hidden[32], const u8 public_key[32], u8 tweak)
 	return is_square - 1;
 }
 
-void crypto_elligator_key_pair(u8 hidden[32], u8 secret_key[32], u8 seed[32])
+static inline void crypto_elligator_key_pair(u8 hidden[32], u8 secret_key[32], u8 seed[32])
 {
 	u8 pk [32]; // public key
 	u8 buf[64]; // seed + representative
@@ -2754,7 +2746,7 @@ void crypto_elligator_key_pair(u8 hidden[32], u8 secret_key[32], u8 seed[32])
 //   s = (x * k) % r
 //   t = x + s*L      (t is always a multiple of r)
 //   u = (t/r) % L    (u is always below 2*L, conditional subtraction is enough)
-static void redc(u32 u[8], u32 x[16])
+static inline void redc(u32 u[8], u32 x[16])
 {
 	static const u32 k[8] = {
 		0x12547e1b, 0xd2b51da3, 0xfdba84ff, 0xb1a206f2,
@@ -2792,7 +2784,7 @@ static void redc(u32 u[8], u32 x[16])
 	WIPE_BUFFER(t);
 }
 
-void crypto_x25519_inverse(u8 blind_salt [32], const u8 private_key[32],
+static inline void crypto_x25519_inverse(u8 blind_salt [32], const u8 private_key[32],
                            const u8 curve_point[32])
 {
 	static const  u8 Lm2[32] = { // L - 2
@@ -2860,7 +2852,7 @@ void crypto_x25519_inverse(u8 blind_salt [32], const u8 private_key[32],
 ////////////////////////////////
 /// Authenticated encryption ///
 ////////////////////////////////
-static void lock_auth(u8 mac[16], const u8  auth_key[32],
+static inline void lock_auth(u8 mac[16], const u8  auth_key[32],
                       const u8 *ad         , size_t ad_size,
                       const u8 *cipher_text, size_t text_size)
 {
@@ -2877,7 +2869,7 @@ static void lock_auth(u8 mac[16], const u8  auth_key[32],
 	crypto_poly1305_final (&poly_ctx, mac); // ...here
 }
 
-void crypto_aead_init_x(crypto_aead_ctx *ctx,
+static inline void crypto_aead_init_x(crypto_aead_ctx *ctx,
                         u8 const key[32], const u8 nonce[24])
 {
 	crypto_chacha20_h(ctx->key, key, nonce);
@@ -2885,7 +2877,7 @@ void crypto_aead_init_x(crypto_aead_ctx *ctx,
 	ctx->counter = 0;
 }
 
-void crypto_aead_init_djb(crypto_aead_ctx *ctx,
+static inline void crypto_aead_init_djb(crypto_aead_ctx *ctx,
                           const u8 key[32], const u8 nonce[8])
 {
 	COPY(ctx->key  , key  , 32);
@@ -2893,7 +2885,7 @@ void crypto_aead_init_djb(crypto_aead_ctx *ctx,
 	ctx->counter = 0;
 }
 
-void crypto_aead_init_ietf(crypto_aead_ctx *ctx,
+static inline void crypto_aead_init_ietf(crypto_aead_ctx *ctx,
                            const u8 key[32], const u8 nonce[12])
 {
 	COPY(ctx->key  , key      , 32);
@@ -2901,7 +2893,7 @@ void crypto_aead_init_ietf(crypto_aead_ctx *ctx,
 	ctx->counter = (u64)load32_le(nonce) << 32;
 }
 
-void crypto_aead_write(crypto_aead_ctx *ctx, u8 *cipher_text, u8 mac[16],
+static inline void crypto_aead_write(crypto_aead_ctx *ctx, u8 *cipher_text, u8 mac[16],
                        const u8 *ad,         size_t ad_size,
                        const u8 *plain_text, size_t text_size)
 {
@@ -2914,7 +2906,7 @@ void crypto_aead_write(crypto_aead_ctx *ctx, u8 *cipher_text, u8 mac[16],
 	WIPE_BUFFER(auth_key);
 }
 
-int crypto_aead_read(crypto_aead_ctx *ctx, u8 *plain_text, const u8 mac[16],
+static inline int crypto_aead_read(crypto_aead_ctx *ctx, u8 *plain_text, const u8 mac[16],
                      const u8 *ad,          size_t ad_size,
                      const u8 *cipher_text, size_t text_size)
 {
@@ -2933,7 +2925,7 @@ int crypto_aead_read(crypto_aead_ctx *ctx, u8 *plain_text, const u8 mac[16],
 	return mismatch;
 }
 
-void crypto_aead_lock(u8 *cipher_text, u8 mac[16], const u8 key[32],
+static inline void crypto_aead_lock(u8 *cipher_text, u8 mac[16], const u8 key[32],
                       const u8  nonce[24], const u8 *ad, size_t ad_size,
                       const u8 *plain_text, size_t text_size)
 {
@@ -2944,7 +2936,7 @@ void crypto_aead_lock(u8 *cipher_text, u8 mac[16], const u8 key[32],
 	crypto_wipe(&ctx, sizeof(ctx));
 }
 
-int crypto_aead_unlock(u8 *plain_text, const u8  mac[16], const u8 key[32],
+static inline int crypto_aead_unlock(u8 *plain_text, const u8  mac[16], const u8 key[32],
                        const u8 nonce[24], const u8 *ad, size_t ad_size,
                        const u8 *cipher_text, size_t text_size)
 {
@@ -2955,7 +2947,3 @@ int crypto_aead_unlock(u8 *plain_text, const u8  mac[16], const u8 key[32],
 	crypto_wipe(&ctx, sizeof(ctx));
 	return mismatch;
 }
-
-#ifdef MONOCYPHER_CPP_NAMESPACE
-}
-#endif
