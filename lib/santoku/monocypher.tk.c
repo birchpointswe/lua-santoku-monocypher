@@ -160,7 +160,7 @@ static int l_identity_sub(lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
   char b64[44];
   size_t out_len;
-  tk_lua_to_base64_buf((const char *)id->sub, 32, false, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)id->sub, 32, false, true, b64, &out_len);
   lua_pushlstring(L, b64, out_len);
   return 1;
 }
@@ -170,7 +170,7 @@ static int l_identity_public_key(lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
   char b64[44];
   size_t out_len;
-  tk_lua_to_base64_buf((const char *)id->public_key, 32, false, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)id->public_key, 32, false, true, b64, &out_len);
   lua_pushlstring(L, b64, out_len);
   return 1;
 }
@@ -184,7 +184,7 @@ static int l_identity_sign(lua_State *L) {
   crypto_eddsa_sign(sig, id->signing_key, (const uint8_t *)msg, len);
   char b64[88];
   size_t out_len;
-  tk_lua_to_base64_buf((const char *)sig, 64, false, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)sig, 64, false, true, b64, &out_len);
   lua_pushlstring(L, b64, out_len);
   return 1;
 }
@@ -196,7 +196,7 @@ static int l_identity_sign_request(lua_State *L) {
   const char *body = luaL_checklstring(L, 2, &len);
   char sub_b64[44];
   size_t sub_b64_len;
-  tk_lua_to_base64_buf((const char *)id->sub, 32, false, sub_b64, &sub_b64_len);
+  tk_lua_to_base64_buf((const char *)id->sub, 32, false, true, sub_b64, &sub_b64_len);
   size_t msg_len = sub_b64_len + 1 + len + 1;
   char *msg = malloc(msg_len);
   snprintf(msg, msg_len, "%.*s:%s", (int)sub_b64_len, sub_b64, body);
@@ -205,7 +205,7 @@ static int l_identity_sign_request(lua_State *L) {
   free(msg);
   char sig_b64[88];
   size_t sig_b64_len;
-  tk_lua_to_base64_buf((const char *)sig, 64, false, sig_b64, &sig_b64_len);
+  tk_lua_to_base64_buf((const char *)sig, 64, false, true, sig_b64, &sig_b64_len);
   lua_pushlstring(L, sig_b64, sig_b64_len);
   return 1;
 }
@@ -216,13 +216,13 @@ static int l_identity_export(lua_State *L) {
   char b64[88];
   size_t out_len;
   lua_newtable(L);
-  tk_lua_to_base64_buf((const char *)id->sub, 32, false, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)id->sub, 32, false, true, b64, &out_len);
   lua_pushlstring(L, b64, out_len); lua_setfield(L, -2, "sub");
-  tk_lua_to_base64_buf((const char *)id->salt, 32, false, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)id->salt, 32, false, true, b64, &out_len);
   lua_pushlstring(L, b64, out_len); lua_setfield(L, -2, "salt");
-  tk_lua_to_base64_buf((const char *)id->signing_key, 64, false, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)id->signing_key, 64, false, true, b64, &out_len);
   lua_pushlstring(L, b64, out_len); lua_setfield(L, -2, "signing_key");
-  tk_lua_to_base64_buf((const char *)id->public_key, 32, false, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)id->public_key, 32, false, true, b64, &out_len);
   lua_pushlstring(L, b64, out_len); lua_setfield(L, -2, "public_key");
   return 1;
 }
@@ -257,7 +257,7 @@ static int l_key_export(lua_State *L) {
   tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
   char b64[44];
   size_t out_len;
-  tk_lua_to_base64_buf((const char *)k->key, 32, false, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)k->key, 32, false, true, b64, &out_len);
   lua_pushlstring(L, b64, out_len);
   return 1;
 }
@@ -287,7 +287,7 @@ static int l_key_encrypt(lua_State *L) {
   crypto_aead_lock(buf + 25, buf + 25 + len, k->key, nonce, NULL, 0, (const uint8_t *)pt, len);
   char *b64 = (char *)(buf + out_len);
   size_t b64_len;
-  tk_lua_to_base64_buf((const char *)buf, out_len, false, b64, &b64_len);
+  tk_lua_to_base64_buf((const char *)buf, out_len, false, true, b64, &b64_len);
   lua_pushlstring(L, b64, b64_len);
   free(buf);
   return 1;
