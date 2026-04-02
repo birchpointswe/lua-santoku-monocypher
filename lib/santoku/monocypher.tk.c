@@ -356,6 +356,20 @@ static int l_hmac_sha256(lua_State *L) {
   return 1;
 }
 
+static int l_key_hash_ivec(lua_State *L) {
+  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  struct { size_t n, m; int64_t *a; int lua_managed; } *v =
+    (void *)luaL_checkudata(L, 2, "tk_ivect");
+  for (size_t i = 0; i < v->n; i++) {
+    uint8_t msg[8], hash[32];
+    memcpy(msg, &v->a[i], 8);
+    hmac_sha256(k->key, 32, msg, 8, hash);
+    memcpy(&v->a[i], hash, 8);
+  }
+  lua_pushvalue(L, 2);
+  return 1;
+}
+
 // crypto.verify_request(public_key_b64, signature_b64, sub_b64, body)
 static int l_verify_request(lua_State *L) {
   size_t pk_b64_len, sig_b64_len;
@@ -397,6 +411,7 @@ static luaL_Reg key_methods[] = {
   {"encrypt", l_key_encrypt},
   {"decrypt", l_key_decrypt},
   {"hmac", l_key_hmac},
+  {"hash_ivec", l_key_hash_ivec},
   {NULL, NULL}
 };
 
