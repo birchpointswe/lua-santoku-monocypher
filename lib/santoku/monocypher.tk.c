@@ -359,7 +359,7 @@ static int l_hmac_sha256(lua_State *L) {
 static int l_key_hash_ivec(lua_State *L) {
   tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
   struct { size_t n, m; int64_t *a; int lua_managed; } *v =
-    (void *)luaL_checkudata(L, 2, "tk_ivect");
+    (void *)luaL_checkudata(L, 2, "tk_ivec_t");
   for (size_t i = 0; i < v->n; i++) {
     uint8_t msg[8], hash[32];
     memcpy(msg, &v->a[i], 8);
