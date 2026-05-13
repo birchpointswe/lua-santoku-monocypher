@@ -86,6 +86,7 @@ static int l_generate (lua_State *L) {
 static int l_validate (lua_State *L) {
   size_t len;
   const char *secret = luaL_checklstring(L, 1, &len);
+  (void)len;
   luaL_checktype(L, lua_upvalueindex(1), LUA_TTABLE); // wordset
   int word_count = 0, all_valid = 1;
   char *copy = strdup(secret), *p = copy;
@@ -97,31 +98,19 @@ static int l_validate (lua_State *L) {
     lua_pop(L, 1);
   }
   free(copy);
-  if (word_count >= 6 && all_valid) {
-    lua_pushboolean(L, 1);
-    return 1;
-  }
-  if (len >= 20) {
-    int lo = 0, up = 0, dig = 0, sym = 0;
-    for (size_t i = 0; i < len; i++) {
-      char c = secret[i];
-      if (c >= 'a' && c <= 'z') lo = 1;
-      else if (c >= 'A' && c <= 'Z') up = 1;
-      else if (c >= '0' && c <= '9') dig = 1;
-      else sym = 1;
-    }
-    lua_pushboolean(L, lo && up && dig && sym);
-    return 1;
-  }
-  lua_pushboolean(L, 0);
+  lua_pushboolean(L, word_count >= 6 && all_valid);
   return 1;
 }
 
-// crypto.derive_identity(secret)
+// crypto.derive_identity(secret, [memory], [passes])
 static int l_derive_identity (lua_State *L) {
   size_t len;
   const char *secret = luaL_checklstring(L, 1, &len);
+  uint32_t nb_blocks = tk_lua_optunsigned(L, 2, "memory", 65536);
+  uint32_t nb_passes = tk_lua_optunsigned(L, 3, "passes", 3);
   tk_identity_t *id = tk_lua_newuserdata(L, tk_identity_t, MT_IDENTITY, NULL, identity_gc);
+  id->argon2_memory = nb_blocks;
+  id->argon2_passes = nb_passes;
   char *buf = malloc(len + 16);
   sprintf(buf, "%s%s", secret, "identity");
   sha256(buf, strlen(buf), id->sub);
@@ -141,8 +130,8 @@ static int l_derive_key (lua_State *L) {
   size_t len;
   const char *secret = luaL_checklstring(L, 1, &len);
   tk_identity_t *id = luaL_checkudata(L, 2, MT_IDENTITY);
-  uint32_t nb_blocks = tk_lua_optunsigned(L, 3, "memory", 65536);
-  uint32_t nb_passes = tk_lua_optunsigned(L, 4, "passes", 3);
+  uint32_t nb_blocks = id->argon2_memory ? id->argon2_memory : 65536;
+  uint32_t nb_passes = id->argon2_passes ? id->argon2_passes : 3;
   tk_key_t *key = tk_lua_newuserdata(L, tk_key_t, MT_KEY, NULL, key_gc);
   char *buf = malloc(len + 16);
   sprintf(buf, "%s%s", secret, "encryption");
@@ -224,6 +213,8 @@ static int l_identity_export(lua_State *L) {
   lua_pushlstring(L, b64, out_len); lua_setfield(L, -2, "signing_key");
   tk_lua_to_base64_buf((const char *)id->public_key, 32, false, true, b64, &out_len);
   lua_pushlstring(L, b64, out_len); lua_setfield(L, -2, "public_key");
+  lua_pushinteger(L, id->argon2_memory); lua_setfield(L, -2, "argon2_memory");
+  lua_pushinteger(L, id->argon2_passes); lua_setfield(L, -2, "argon2_passes");
   return 1;
 }
 
@@ -248,6 +239,12 @@ static int l_import_identity(lua_State *L) {
   lua_getfield(L, 1, "public_key");
   str = lua_tolstring(L, -1, &len);
   tk_lua_from_base64_buf(str, len, false, (char *)id->public_key, &out_len);
+  lua_pop(L, 1);
+  lua_getfield(L, 1, "argon2_memory");
+  id->argon2_memory = lua_isnil(L, -1) ? 65536 : (uint32_t)lua_tointeger(L, -1);
+  lua_pop(L, 1);
+  lua_getfield(L, 1, "argon2_passes");
+  id->argon2_passes = lua_isnil(L, -1) ? 3 : (uint32_t)lua_tointeger(L, -1);
   lua_pop(L, 1);
   return 1;
 }
@@ -323,6 +320,76 @@ static int l_key_decrypt(lua_State *L) {
   }
   lua_pushlstring(L, (char *)pt, ct_len);
   free(pt);
+  return 1;
+}
+
+// crypto.wrap_key(key_userdata, wrap_bytes) -> base64 ciphertext
+static int l_wrap_key(lua_State *L) {
+  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  size_t wrap_len;
+  const char *wrap = luaL_checklstring(L, 2, &wrap_len);
+  if (wrap_len != 32) {
+    lua_pushnil(L);
+    lua_pushstring(L, "wrap_bytes must be exactly 32 bytes");
+    return 2;
+  }
+  uint8_t nonce[24];
+  arc4random_buf(nonce, 24);
+  size_t out_len = 1 + 24 + 32 + 16;
+  size_t b64_max = ((out_len + 2) / 3) * 4;
+  uint8_t *buf = malloc(out_len + b64_max);
+  buf[0] = VERSION;
+  memcpy(buf + 1, nonce, 24);
+  crypto_aead_lock(buf + 25, buf + 25 + 32, (const uint8_t *)wrap, nonce, NULL, 0, k->key, 32);
+  char *b64 = (char *)(buf + out_len);
+  size_t b64_len;
+  tk_lua_to_base64_buf((const char *)buf, out_len, false, true, b64, &b64_len);
+  lua_pushlstring(L, b64, b64_len);
+  free(buf);
+  return 1;
+}
+
+// crypto.unwrap_key(base64, wrap_bytes) -> key_userdata or nil, error
+static int l_unwrap_key(lua_State *L) {
+  size_t b64_len;
+  const char *b64 = luaL_checklstring(L, 1, &b64_len);
+  size_t wrap_len;
+  const char *wrap = luaL_checklstring(L, 2, &wrap_len);
+  if (wrap_len != 32) {
+    lua_pushnil(L);
+    lua_pushstring(L, "wrap_bytes must be exactly 32 bytes");
+    return 2;
+  }
+  size_t dec_max = (b64_len * 3) / 4;
+  uint8_t *in = malloc(dec_max);
+  size_t dec_len;
+  tk_lua_from_base64_buf(b64, b64_len, false, (char *)in, &dec_len);
+  if (dec_len < 1 + 24 + 16 || in[0] != VERSION) {
+    free(in);
+    lua_pushnil(L);
+    lua_pushstring(L, "unsupported version");
+    return 2;
+  }
+  size_t ct_len = dec_len - 1 - 24 - 16;
+  if (ct_len != 32) {
+    free(in);
+    lua_pushnil(L);
+    lua_pushstring(L, "invalid wrapped key length");
+    return 2;
+  }
+  uint8_t *nonce = in + 1;
+  uint8_t *ct = in + 25;
+  uint8_t *mac = in + 25 + 32;
+  tk_key_t *key = tk_lua_newuserdata(L, tk_key_t, MT_KEY, NULL, key_gc);
+  int ret = crypto_aead_unlock(key->key, mac, (const uint8_t *)wrap, nonce, NULL, 0, ct, 32);
+  free(in);
+  if (ret != 0) {
+    crypto_wipe(key->key, 32);
+    lua_pop(L, 1);
+    lua_pushnil(L);
+    lua_pushstring(L, "decryption failed");
+    return 2;
+  }
   return 1;
 }
 
@@ -420,6 +487,8 @@ static luaL_Reg module_funcs[] = {
   {"derive_key", l_derive_key},
   {"import_identity", l_import_identity},
   {"import_key", l_import_key},
+  {"wrap_key", l_wrap_key},
+  {"unwrap_key", l_unwrap_key},
   {"verify_request", l_verify_request},
   {"hmac_sha256", l_hmac_sha256},
   {NULL, NULL}
