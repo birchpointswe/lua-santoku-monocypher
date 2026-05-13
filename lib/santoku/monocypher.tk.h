@@ -15,6 +15,8 @@ typedef struct {
   uint8_t public_key[32];
   uint32_t argon2_memory;
   uint32_t argon2_passes;
+  uint8_t master[32];
+  uint8_t has_master;
 } tk_identity_t;
 
 <% return readfile("res/monocypher.h") %>
