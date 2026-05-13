@@ -102,6 +102,21 @@ static int l_validate (lua_State *L) {
   return 1;
 }
 
+static void derive_master (const char *secret, size_t secret_len,
+                           uint32_t nb_blocks, uint32_t nb_passes,
+                           uint8_t *salt_out, uint8_t *master_out) {
+  char *buf = malloc(secret_len + 16);
+  memcpy(buf, secret, secret_len);
+  memcpy(buf + secret_len, "salt", 4);
+  sha256(buf, secret_len + 4, salt_out);
+  free(buf);
+  void *work_area = malloc((size_t)nb_blocks * 1024);
+  crypto_argon2_config config = { CRYPTO_ARGON2_ID, nb_blocks, nb_passes, 1 };
+  crypto_argon2_inputs inputs = { (const uint8_t *)secret, salt_out, secret_len, 32 };
+  crypto_argon2(master_out, 32, work_area, config, inputs, crypto_argon2_no_extras);
+  free(work_area);
+}
+
 // crypto.derive_identity(secret, [memory], [passes])
 static int l_derive_identity (lua_State *L) {
   size_t len;
@@ -111,15 +126,11 @@ static int l_derive_identity (lua_State *L) {
   tk_identity_t *id = tk_lua_newuserdata(L, tk_identity_t, MT_IDENTITY, NULL, identity_gc);
   id->argon2_memory = nb_blocks;
   id->argon2_passes = nb_passes;
-  char *buf = malloc(len + 16);
-  sprintf(buf, "%s%s", secret, "identity");
-  sha256(buf, strlen(buf), id->sub);
-  sprintf(buf, "%s%s", secret, "salt");
-  sha256(buf, strlen(buf), id->salt);
+  derive_master(secret, len, nb_blocks, nb_passes, id->salt, id->master);
+  id->has_master = 1;
+  tk_hmac_sha256(id->master, 32, (const uint8_t *)"littlelist-id-sub-v1", 20, id->sub);
   uint8_t seed[32];
-  sprintf(buf, "%s%s", secret, "signing");
-  sha256(buf, strlen(buf), seed);
-  free(buf);
+  tk_hmac_sha256(id->master, 32, (const uint8_t *)"littlelist-id-signing-v1", 24, seed);
   crypto_eddsa_key_pair(id->signing_key, id->public_key, seed);
   crypto_wipe(seed, 32);
   return 1;
@@ -130,17 +141,21 @@ static int l_derive_key (lua_State *L) {
   size_t len;
   const char *secret = luaL_checklstring(L, 1, &len);
   tk_identity_t *id = luaL_checkudata(L, 2, MT_IDENTITY);
-  uint32_t nb_blocks = id->argon2_memory ? id->argon2_memory : 65536;
-  uint32_t nb_passes = id->argon2_passes ? id->argon2_passes : 3;
+  uint8_t master[32];
+  if (id->has_master) {
+    memcpy(master, id->master, 32);
+  } else {
+    uint32_t nb_blocks = id->argon2_memory ? id->argon2_memory : 65536;
+    uint32_t nb_passes = id->argon2_passes ? id->argon2_passes : 3;
+    uint8_t salt_check[32];
+    derive_master(secret, len, nb_blocks, nb_passes, salt_check, master);
+    crypto_wipe(salt_check, 32);
+    memcpy(id->master, master, 32);
+    id->has_master = 1;
+  }
   tk_key_t *key = tk_lua_newuserdata(L, tk_key_t, MT_KEY, NULL, key_gc);
-  char *buf = malloc(len + 16);
-  sprintf(buf, "%s%s", secret, "encryption");
-  void *work_area = malloc((size_t)nb_blocks * 1024);
-  crypto_argon2_config config = { CRYPTO_ARGON2_ID, nb_blocks, nb_passes, 1 };
-  crypto_argon2_inputs inputs = { (const uint8_t *)buf, id->salt, strlen(buf), 32 };
-  crypto_argon2(key->key, 32, work_area, config, inputs, crypto_argon2_no_extras);
-  free(work_area);
-  free(buf);
+  tk_hmac_sha256(master, 32, (const uint8_t *)"littlelist-id-key-v1", 20, key->key);
+  crypto_wipe(master, 32);
   return 1;
 }
 
