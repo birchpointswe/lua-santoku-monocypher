@@ -83,6 +83,9 @@ static int l_generate (lua_State *L) {
 }
 
 
+
+
+
 static int l_validate (lua_State *L) {
   size_t len;
   const char *secret = luaL_checklstring(L, 1, &len);
@@ -90,7 +93,7 @@ static int l_validate (lua_State *L) {
   luaL_checktype(L, lua_upvalueindex(1), LUA_TTABLE);
   int word_count = 0, all_valid = 1;
   char *copy = strdup(secret), *p = copy;
-  for (char *tok = strtok(p, " -_."); tok; tok = strtok(NULL, " -_.")) {
+  for (char *tok = strtok(p, " \t\n\r"); tok; tok = strtok(NULL, " \t\n\r")) {
     word_count++;
     for (char *c = tok; *c; c++) *c = tolower(*c);
     lua_getfield(L, lua_upvalueindex(1), tok);
