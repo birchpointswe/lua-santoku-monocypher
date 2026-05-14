@@ -83,14 +83,17 @@ static int l_generate (lua_State *L) {
 }
 
 // crypto.validate(secret)
+// Split only on whitespace. The EFF wordlist contains hyphenated entries
+// (drop-down, felt-tip, t-shirt, yo-yo); splitting on hyphens would
+// reject valid output from crypto.generate().
 static int l_validate (lua_State *L) {
   size_t len;
   const char *secret = luaL_checklstring(L, 1, &len);
   (void)len;
-  luaL_checktype(L, lua_upvalueindex(1), LUA_TTABLE); // wordset
+  luaL_checktype(L, lua_upvalueindex(1), LUA_TTABLE);
   int word_count = 0, all_valid = 1;
   char *copy = strdup(secret), *p = copy;
-  for (char *tok = strtok(p, " -_."); tok; tok = strtok(NULL, " -_.")) {
+  for (char *tok = strtok(p, " \t\n\r"); tok; tok = strtok(NULL, " \t\n\r")) {
     word_count++;
     for (char *c = tok; *c; c++) *c = tolower(*c);
     lua_getfield(L, lua_upvalueindex(1), tok);

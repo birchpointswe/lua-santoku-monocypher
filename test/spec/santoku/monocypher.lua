@@ -127,6 +127,20 @@ test("validate invalid passphrase", function ()
   assert(crypto.validate("invalid-words-here-now-test-foo") == false)
 end)
 
+test("validate accepts hyphenated EFF entries", function ()
+  -- felt-tip, drop-down, t-shirt, yo-yo are hyphenated entries in EFF.
+  -- generate() may emit these; validate() must accept them as single tokens.
+  assert(crypto.validate("abacus abdomen abdominal abide felt-tip drop-down") == true)
+  assert(crypto.validate("t-shirt yo-yo abacus abdomen abdominal abide") == true)
+end)
+
+test("validate accepts every output of generate (1000 iter)", function ()
+  for _ = 1, 1000 do
+    local secret = crypto.generate()
+    assert(crypto.validate(secret) == true, "generate produced invalid: " .. secret)
+  end
+end)
+
 test("derive_identity custom argon2 params", function ()
   local id = crypto.derive_identity("test-secret", 1024, 1)
   local exported = id:export()
