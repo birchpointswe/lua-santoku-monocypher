@@ -10,7 +10,6 @@ typedef struct {
 
 typedef struct {
   uint8_t sub[32];
-  uint8_t salt[32];
   uint8_t signing_key[64];
   uint8_t public_key[32];
   uint32_t argon2_memory;
