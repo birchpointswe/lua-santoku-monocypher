@@ -31,8 +31,9 @@ deterministic, so the same inputs reproduce the same subject, keys, and signatur
 
 ## Module functions  ·  test/spec/santoku/monocypher.lua
 
-- `generate()` returns a six-word EFF diceware passphrase; `validate(secret)`
-  returns whether a string is six or more valid (whitespace-split) wordlist tokens.
+- `generate()` returns an eight-word EFF diceware passphrase (~103 bits);
+  `validate(secret)` returns whether a string is six or more valid
+  (whitespace-split) wordlist tokens.
 - `derive_identity(secret, [memory], [passes])` returns an identity; `memory`
   (Argon2 blocks, default 65536) and `passes` (default 3) tune the work factor.
 - `derive_key(secret, identity)` returns a key.
