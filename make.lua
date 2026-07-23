@@ -1,6 +1,6 @@
 local env = {
   name = "santoku-monocypher",
-  version = "0.0.21-1",
+  version = "0.0.22-1",
   license = "MIT",
   public = true,
   cflags = {

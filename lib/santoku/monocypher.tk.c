@@ -325,6 +325,15 @@ static int l_key_decrypt(lua_State *L) {
   uint8_t *in = malloc(dec_max);
   size_t dec_len;
   tk_lua_from_base64_buf(b64, b64_len, false, (char *)in, &dec_len);
+
+
+
+  if (dec_len < 1 + 24 + 16) {
+    free(in);
+    lua_pushnil(L);
+    lua_pushstring(L, "unsupported version");
+    return 2;
+  }
   uint8_t version = in[0];
   if (version != VERSION && version != VERSION_AAD) {
     free(in);
@@ -492,6 +501,24 @@ static int l_verify_request(lua_State *L) {
   return 1;
 }
 
+
+
+
+static int l_const_eq(lua_State *L) {
+  size_t alen, blen;
+  const unsigned char *a = (const unsigned char *)luaL_checklstring(L, 1, &alen);
+  const unsigned char *b = (const unsigned char *)luaL_checklstring(L, 2, &blen);
+  if (alen != blen) {
+    lua_pushboolean(L, 0);
+    return 1;
+  }
+  volatile unsigned char acc = 0;
+  for (size_t i = 0; i < alen; i++)
+    acc |= (unsigned char)(a[i] ^ b[i]);
+  lua_pushboolean(L, acc == 0);
+  return 1;
+}
+
 static luaL_Reg identity_methods[] = {
   {"sub", l_identity_sub},
   {"public_key", l_identity_public_key},
@@ -519,6 +546,7 @@ static luaL_Reg module_funcs[] = {
   {"unwrap_key", l_unwrap_key},
   {"verify_request", l_verify_request},
   {"hmac_sha256", l_hmac_sha256},
+  {"const_eq", l_const_eq},
   {NULL, NULL}
 };
 
