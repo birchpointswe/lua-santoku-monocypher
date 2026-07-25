@@ -273,6 +273,27 @@ static int l_key_export(lua_State *L) {
 }
 
 
+
+
+static int l_key_bytes(lua_State *L) {
+  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  lua_pushlstring(L, (const char *)k->key, 32);
+  return 1;
+}
+
+
+
+
+static int l_key_derive(lua_State *L) {
+  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  size_t len;
+  const char *label = luaL_checklstring(L, 2, &len);
+  tk_key_t *out = tk_lua_newuserdata(L, tk_key_t, MT_KEY, NULL, key_gc);
+  tk_hmac_sha256(k->key, 32, (const uint8_t *) label, len, out->key);
+  return 1;
+}
+
+
 static int l_import_key(lua_State *L) {
   size_t b64_len;
   const char *b64 = luaL_checklstring(L, 1, &b64_len);
@@ -530,6 +551,8 @@ static luaL_Reg identity_methods[] = {
 
 static luaL_Reg key_methods[] = {
   {"export", l_key_export},
+  {"bytes", l_key_bytes},
+  {"derive", l_key_derive},
   {"encrypt", l_key_encrypt},
   {"decrypt", l_key_decrypt},
   {"hmac", l_key_hmac},

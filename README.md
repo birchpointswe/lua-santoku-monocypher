@@ -64,12 +64,18 @@ covers: `identity sign and export`, `import_identity roundtrip`,
 `encrypt(plaintext)` returns base64 ciphertext (version byte, 24-byte nonce, AEAD
 ciphertext and tag); `decrypt(base64)` returns the plaintext, or
 `nil, "decryption failed"` on a bad key or tampered input. `export()` returns the
-32-byte key as base64. `hmac(message)` returns a 64-char hex HMAC-SHA-256 under the
-key. `hash_ivec(ivec)` HMACs each int64 of a matrix `tk_ivec_t` in place (requires
+32-byte key as base64. `bytes()` returns the same 32 bytes raw, for consumers that
+take a raw symmetric key (santoku-sqlite's `open_encrypted`, say). `derive(label)`
+returns a new key = HMAC(key, label), so one key can spawn domain-separated
+subkeys without a second Argon2id pass — deterministic, so nothing extra is
+persisted. `hmac(message)` returns a 64-char hex HMAC-SHA-256 under the key.
+`hash_ivec(ivec)` HMACs each int64 of a matrix `tk_ivec_t` in place (requires
 santoku-matrix; see the test for its surface).
 
 covers: `encrypt decrypt roundtrip`, `encrypt decrypt empty string`,
-`decrypt wrong key fails`, `import_key roundtrip`, `key hmac`.
+`decrypt wrong key fails`, `import_key roundtrip`, `key hmac`,
+`key bytes returns raw 32-byte material`,
+`key derive produces domain-separated subkeys`.
 
 ## Canonical flow
 
@@ -84,6 +90,9 @@ local key = crypto.derive_key(secret, id)
 
 local ct = key:encrypt("hello world")         -- XChaCha20-Poly1305, base64
 assert(key:decrypt(ct) == "hello world")
+
+local dbkey = key:derive("db")                -- domain-separated subkey
+assert(#dbkey:bytes() == 32)                  -- raw material for a cipher/VFS
 
 local sig = id:sign_request("request body")   -- EdDSA over sub:body
 assert(crypto.verify_request(id:public_key(), sig, id:sub(), "request body"))

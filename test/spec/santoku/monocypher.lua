@@ -254,3 +254,35 @@ test("key hmac deterministic hex", function ()
   assert(#h == 64)
   assert(key:hmac("message") == h)
 end)
+
+test("key bytes returns raw 32-byte material", function ()
+  local id = crypto.derive_identity("test-secret")
+  local key = crypto.derive_key("test-secret", id)
+  local raw = key:bytes()
+  assert(type(raw) == "string")
+  assert(#raw == 32)
+
+  assert(key:bytes() == raw)
+  assert(raw ~= key:export())
+
+  assert(crypto.import_key(key:export()):bytes() == raw)
+end)
+
+test("key derive produces domain-separated subkeys", function ()
+  local id = crypto.derive_identity("test-secret")
+  local key = crypto.derive_key("test-secret", id)
+  local a = key:derive("db")
+  local b = key:derive("db")
+  local c = key:derive("search")
+  assert(#a:bytes() == 32)
+
+  assert(a:bytes() == b:bytes())
+
+  assert(a:bytes() ~= c:bytes())
+
+  assert(a:bytes() ~= key:bytes())
+
+  local ct = a:encrypt("hello")
+  assert(a:decrypt(ct) == "hello")
+  assert(c:decrypt(ct) == nil)
+end)
