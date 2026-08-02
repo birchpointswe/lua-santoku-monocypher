@@ -50,7 +50,6 @@ static void hmac_sha256 (const uint8_t *key, size_t key_len, const uint8_t *msg,
   sha256_final(&ctx, out);
 }
 
-
 static int identity_gc (lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
   crypto_wipe(id, sizeof(*id));
@@ -62,7 +61,6 @@ static int key_gc (lua_State *L) {
   crypto_wipe(k, sizeof(*k));
   return 0;
 }
-
 
 static int l_generate (lua_State *L) {
   luaL_checktype(L, lua_upvalueindex(1), LUA_TTABLE);
@@ -83,10 +81,6 @@ static int l_generate (lua_State *L) {
   return 1;
 }
 
-
-
-
-
 static int l_validate (lua_State *L) {
   size_t len;
   const char *secret = luaL_checklstring(L, 1, &len);
@@ -106,8 +100,6 @@ static int l_validate (lua_State *L) {
   return 1;
 }
 
-
-
 static const char TK_ARGON2_SALT[] = "littlelist-argon2-v1";
 
 static void derive_master (const char *secret, size_t secret_len,
@@ -122,7 +114,6 @@ static void derive_master (const char *secret, size_t secret_len,
   crypto_argon2(master_out, 32, work_area, config, inputs, crypto_argon2_no_extras);
   free(work_area);
 }
-
 
 static int l_derive_identity (lua_State *L) {
   size_t len;
@@ -141,7 +132,6 @@ static int l_derive_identity (lua_State *L) {
   crypto_wipe(seed, 32);
   return 1;
 }
-
 
 static int l_derive_key (lua_State *L) {
   size_t len;
@@ -163,7 +153,6 @@ static int l_derive_key (lua_State *L) {
   return 1;
 }
 
-
 static int l_identity_sub(lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
   char b64[44];
@@ -173,7 +162,6 @@ static int l_identity_sub(lua_State *L) {
   return 1;
 }
 
-
 static int l_identity_public_key(lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
   char b64[44];
@@ -182,7 +170,6 @@ static int l_identity_public_key(lua_State *L) {
   lua_pushlstring(L, b64, out_len);
   return 1;
 }
-
 
 static int l_identity_sign(lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
@@ -196,7 +183,6 @@ static int l_identity_sign(lua_State *L) {
   lua_pushlstring(L, b64, out_len);
   return 1;
 }
-
 
 static int l_identity_sign_request(lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
@@ -218,7 +204,6 @@ static int l_identity_sign_request(lua_State *L) {
   return 1;
 }
 
-
 static int l_identity_export(lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
   char b64[88];
@@ -234,7 +219,6 @@ static int l_identity_export(lua_State *L) {
   lua_pushinteger(L, id->argon2_passes); lua_setfield(L, -2, "argon2_passes");
   return 1;
 }
-
 
 static int l_import_identity(lua_State *L) {
   luaL_checktype(L, 1, LUA_TTABLE);
@@ -262,7 +246,6 @@ static int l_import_identity(lua_State *L) {
   return 1;
 }
 
-
 static int l_key_export(lua_State *L) {
   tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
   char b64[44];
@@ -272,17 +255,11 @@ static int l_key_export(lua_State *L) {
   return 1;
 }
 
-
-
-
 static int l_key_bytes(lua_State *L) {
   tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
   lua_pushlstring(L, (const char *)k->key, 32);
   return 1;
 }
-
-
-
 
 static int l_key_derive(lua_State *L) {
   tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
@@ -293,7 +270,6 @@ static int l_key_derive(lua_State *L) {
   return 1;
 }
 
-
 static int l_import_key(lua_State *L) {
   size_t b64_len;
   const char *b64 = luaL_checklstring(L, 1, &b64_len);
@@ -302,9 +278,6 @@ static int l_import_key(lua_State *L) {
   tk_lua_from_base64_buf(b64, b64_len, false, (char *)k->key, &out_len);
   return 1;
 }
-
-
-
 
 static int l_key_encrypt(lua_State *L) {
   tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
@@ -331,8 +304,6 @@ static int l_key_encrypt(lua_State *L) {
   return 1;
 }
 
-
-
 static int l_key_decrypt(lua_State *L) {
   tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
   size_t b64_len;
@@ -347,8 +318,6 @@ static int l_key_decrypt(lua_State *L) {
   size_t dec_len;
   tk_lua_from_base64_buf(b64, b64_len, false, (char *)in, &dec_len);
 
-
-
   if (dec_len < 1 + 24 + 16) {
     free(in);
     lua_pushnil(L);
@@ -362,7 +331,12 @@ static int l_key_decrypt(lua_State *L) {
     lua_pushstring(L, "unsupported version");
     return 2;
   }
-  if (version == VERSION) { ad = NULL; ad_len = 0; }
+  if (version != (ad_len ? VERSION_AAD : VERSION)) {
+    free(in);
+    lua_pushnil(L);
+    lua_pushstring(L, "aad mismatch");
+    return 2;
+  }
   uint8_t *nonce = in + 1;
   size_t ct_len = dec_len - 1 - 24 - 16;
   uint8_t *ct = in + 25;
@@ -380,7 +354,6 @@ static int l_key_decrypt(lua_State *L) {
   free(pt);
   return 1;
 }
-
 
 static int l_wrap_key(lua_State *L) {
   tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
@@ -406,7 +379,6 @@ static int l_wrap_key(lua_State *L) {
   free(buf);
   return 1;
 }
-
 
 static int l_unwrap_key(lua_State *L) {
   size_t b64_len;
@@ -451,7 +423,6 @@ static int l_unwrap_key(lua_State *L) {
   return 1;
 }
 
-
 static int l_key_hmac(lua_State *L) {
   tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
   size_t msg_len;
@@ -465,7 +436,6 @@ static int l_key_hmac(lua_State *L) {
   lua_pushlstring(L, hex, 64);
   return 1;
 }
-
 
 static int l_hmac_sha256(lua_State *L) {
   size_t key_len, msg_len;
@@ -495,7 +465,6 @@ static int l_key_hash_ivec(lua_State *L) {
   return 1;
 }
 
-
 static int l_verify_request(lua_State *L) {
   size_t pk_b64_len, sig_b64_len;
   const char *pk_b64 = luaL_checklstring(L, 1, &pk_b64_len);
@@ -521,9 +490,6 @@ static int l_verify_request(lua_State *L) {
   lua_pushboolean(L, 1);
   return 1;
 }
-
-
-
 
 static int l_const_eq(lua_State *L) {
   size_t alen, blen;
@@ -601,14 +567,12 @@ int luaopen_santoku_monocypher (lua_State *L)
           }
   int dice_tbl = lua_gettop(L);
 
-
   lua_newtable(L);
   for (size_t i = 0; i < eff_words_len; i++) {
     lua_pushboolean(L, 1);
     lua_setfield(L, -2, eff_words[i]);
   }
   int wordset_tbl = lua_gettop(L);
-
 
   if (luaL_newmetatable(L, MT_IDENTITY)) {
     lua_pushcfunction(L, identity_gc);
@@ -618,7 +582,6 @@ int luaopen_santoku_monocypher (lua_State *L)
     lua_setfield(L, -2, "__index");
   }
   lua_pop(L, 1);
-
 
   if (luaL_newmetatable(L, MT_KEY)) {
     lua_pushcfunction(L, key_gc);

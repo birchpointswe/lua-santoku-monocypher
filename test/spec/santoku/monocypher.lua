@@ -90,7 +90,16 @@ test("decrypt aad-bound without aad fails", function ()
   local ciphertext = key:encrypt("hello", "sub:id-1")
   local result, errmsg = key:decrypt(ciphertext)
   assert(result == nil)
-  assert(errmsg == "decryption failed")
+  assert(errmsg == "aad mismatch")
+end)
+
+test("decrypt unbound blob with aad fails", function ()
+  local id = crypto.derive_identity("test-secret")
+  local key = crypto.derive_key("test-secret", id)
+  local ciphertext = key:encrypt("hello")
+  local result, errmsg = key:decrypt(ciphertext, "sub:id-1")
+  assert(result == nil)
+  assert(errmsg == "aad mismatch")
 end)
 
 test("decrypt wrong key fails", function ()
@@ -153,8 +162,6 @@ test("validate invalid passphrase", function ()
 end)
 
 test("validate accepts hyphenated EFF entries", function ()
-
-
   assert(crypto.validate("abacus abdomen abdominal abide abiding ability felt-tip drop-down") == true)
   assert(crypto.validate("t-shirt yo-yo abacus abdomen abdominal abide abiding ability") == true)
 end)
