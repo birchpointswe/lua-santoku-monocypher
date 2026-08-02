@@ -139,7 +139,7 @@ test("generate passphrase", function ()
   for w in secret:gmatch("%S+") do
     words[#words + 1] = w
   end
-  assert(#words == 8)
+  assert(#words == 6)
 end)
 
 test("validate passphrase", function ()
@@ -153,8 +153,8 @@ test("validate rejects 20-char path", function ()
 end)
 
 test("validate rejects short diceware", function ()
-  assert(crypto.validate("abacus abdomen abdominal abide abiding ability abacus abdomen") == true)
-  assert(crypto.validate("abacus abdomen abdominal abide abiding ability abacus") == false)
+  assert(crypto.validate("abacus abdomen abdominal abide abiding ability") == true)
+  assert(crypto.validate("abacus abdomen abdominal abide abiding") == false)
 end)
 
 test("validate invalid passphrase", function ()

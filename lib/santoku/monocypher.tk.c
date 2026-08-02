@@ -17,6 +17,7 @@ static void arc4random_buf(void *buf, size_t n) {
 #define MT_KEY TK_MT_KEY
 #define VERSION 0x01
 #define VERSION_AAD 0x02
+#define TK_PHRASE_WORDS 6
 
 static void sha256 (const char *data, size_t len, uint8_t *out) {
   SHA256_CTX ctx;
@@ -65,7 +66,7 @@ static int key_gc (lua_State *L) {
 static int l_generate (lua_State *L) {
   luaL_checktype(L, lua_upvalueindex(1), LUA_TTABLE);
   char result[256] = {0};
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < TK_PHRASE_WORDS; i++) {
     char dice[6] = {0};
     for (int j = 0; j < 5; j++) {
       uint8_t r;
@@ -96,7 +97,7 @@ static int l_validate (lua_State *L) {
     lua_pop(L, 1);
   }
   free(copy);
-  lua_pushboolean(L, word_count >= 8 && all_valid);
+  lua_pushboolean(L, word_count >= TK_PHRASE_WORDS && all_valid);
   return 1;
 }
 
