@@ -18,13 +18,13 @@ typedef struct {
   uint8_t has_master;
 } tk_identity_t;
 
-<% return readfile("res/monocypher.h") %>
+<% return readfile("res/vendor/monocypher/monocypher.h") %>
 
-<% return readfile("res/monocypher.c") %>
+<% return readfile("res/vendor/monocypher/monocypher.c") %>
 
-<% return readfile("res/sha256.h") %>
+<% return readfile("res/vendor/monocypher/sha256.h") %>
 
-<% return readfile("res/sha256.c") %>
+<% return readfile("res/vendor/monocypher/sha256.c") %>
 
 static inline void tk_hmac_sha256(
   const uint8_t *key, size_t key_len,
