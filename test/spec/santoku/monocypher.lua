@@ -2,6 +2,8 @@ local test = require("santoku.test")
 
 local crypto = require("santoku.monocypher")
 
+local arr = require("santoku.array")
+
 local err = require("santoku.error")
 local assert = err.assert
 
@@ -251,6 +253,30 @@ test("hmac_sha256 deterministic hex", function ()
   assert(#h1 == 64)
   assert(h1 == h2)
   assert(crypto.hmac_sha256("k2", "message") ~= h1)
+end)
+
+test("hmac_sha1 rfc 2202 vectors", function ()
+  local function bytes (...)
+    return string.char(...)
+  end
+  assert(crypto.hmac_sha1(string.rep(bytes(0x0b), 20), "Hi There")
+    == "b617318655057264e28bc0b6fb378c8ef146be00")
+  assert(crypto.hmac_sha1("Jefe", "what do ya want for nothing?")
+    == "effcdf6ae5eb2fa2d27416d5f184df9c259a7c79")
+  assert(crypto.hmac_sha1(string.rep(bytes(0xaa), 20), string.rep(bytes(0xdd), 50))
+    == "125d7342b9ac11cd91a39af48aa17b4f63f175d3")
+  local key4 = {}
+  for i = 1, 25 do key4[i] = i end
+  assert(crypto.hmac_sha1(bytes(arr.spread(key4)), string.rep(bytes(0xcd), 50))
+    == "4c9007f4026250c6bc8414f9bf50c86c2d7235da")
+  assert(crypto.hmac_sha1(string.rep(bytes(0x0c), 20), "Test With Truncation")
+    == "4c1a03424b55e07fe7f27be1d58bb9324a9a5a04")
+  assert(crypto.hmac_sha1(string.rep(bytes(0xaa), 80),
+    "Test Using Larger Than Block-Size Key - Hash Key First")
+    == "aa4ae5e15272d00e95705637ce8a3b55ed402112")
+  assert(crypto.hmac_sha1(string.rep(bytes(0xaa), 80),
+    "Test Using Larger Than Block-Size Key and Larger Than One Block-Size Data")
+    == "e8e99d0f45237d786d6bbaa7965c7808bbff1a91")
 end)
 
 test("key hmac deterministic hex", function ()

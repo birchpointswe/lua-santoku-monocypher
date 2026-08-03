@@ -26,6 +26,88 @@ static void sha256 (const char *data, size_t len, uint8_t *out) {
   sha256_final(&ctx, out);
 }
 
+typedef struct {
+  uint32_t h[5];
+  uint64_t len;
+  uint8_t buf[64];
+} tk_sha1_ctx;
+
+static void tk_sha1_block (tk_sha1_ctx *ctx, const uint8_t *p) {
+  uint32_t w[80];
+  for (int i = 0; i < 16; i++)
+    w[i] = ((uint32_t)p[i * 4] << 24) | ((uint32_t)p[i * 4 + 1] << 16)
+      | ((uint32_t)p[i * 4 + 2] << 8) | (uint32_t)p[i * 4 + 3];
+  for (int i = 16; i < 80; i++) {
+    uint32_t x = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
+    w[i] = (x << 1) | (x >> 31);
+  }
+  uint32_t a = ctx->h[0], b = ctx->h[1], c = ctx->h[2], d = ctx->h[3], e = ctx->h[4];
+  for (int i = 0; i < 80; i++) {
+    uint32_t f, k;
+    if (i < 20) { f = (b & c) | ((~b) & d); k = 0x5A827999; }
+    else if (i < 40) { f = b ^ c ^ d; k = 0x6ED9EBA1; }
+    else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDC; }
+    else { f = b ^ c ^ d; k = 0xCA62C1D6; }
+    uint32_t t = ((a << 5) | (a >> 27)) + f + e + k + w[i];
+    e = d; d = c; c = (b << 30) | (b >> 2); b = a; a = t;
+  }
+  ctx->h[0] += a; ctx->h[1] += b; ctx->h[2] += c; ctx->h[3] += d; ctx->h[4] += e;
+}
+
+static void tk_sha1_init (tk_sha1_ctx *ctx) {
+  ctx->h[0] = 0x67452301; ctx->h[1] = 0xEFCDAB89; ctx->h[2] = 0x98BADCFE;
+  ctx->h[3] = 0x10325476; ctx->h[4] = 0xC3D2E1F0;
+  ctx->len = 0;
+}
+
+static void tk_sha1_update (tk_sha1_ctx *ctx, const uint8_t *data, size_t len) {
+  size_t fill = (size_t)(ctx->len % 64);
+  ctx->len += len;
+  if (fill) {
+    size_t take = 64 - fill;
+    if (take > len) take = len;
+    memcpy(ctx->buf + fill, data, take);
+    data += take;
+    len -= take;
+    if (fill + take < 64) return;
+    tk_sha1_block(ctx, ctx->buf);
+  }
+  while (len >= 64) {
+    tk_sha1_block(ctx, data);
+    data += 64;
+    len -= 64;
+  }
+  if (len) memcpy(ctx->buf, data, len);
+}
+
+static void tk_sha1_final (tk_sha1_ctx *ctx, uint8_t *out) {
+  uint64_t bits = ctx->len * 8;
+  size_t fill = (size_t)(ctx->len % 64);
+  ctx->buf[fill++] = 0x80;
+  if (fill > 56) {
+    memset(ctx->buf + fill, 0, 64 - fill);
+    tk_sha1_block(ctx, ctx->buf);
+    fill = 0;
+  }
+  memset(ctx->buf + fill, 0, 56 - fill);
+  for (int i = 0; i < 8; i++)
+    ctx->buf[56 + i] = (uint8_t)(bits >> (56 - 8 * i));
+  tk_sha1_block(ctx, ctx->buf);
+  for (int i = 0; i < 5; i++) {
+    out[i * 4] = (uint8_t)(ctx->h[i] >> 24);
+    out[i * 4 + 1] = (uint8_t)(ctx->h[i] >> 16);
+    out[i * 4 + 2] = (uint8_t)(ctx->h[i] >> 8);
+    out[i * 4 + 3] = (uint8_t)(ctx->h[i]);
+  }
+}
+
+static void sha1 (const char *data, size_t len, uint8_t *out) {
+  tk_sha1_ctx ctx;
+  tk_sha1_init(&ctx);
+  tk_sha1_update(&ctx, (const uint8_t *)data, len);
+  tk_sha1_final(&ctx, out);
+}
+
 static void hmac_sha256 (const uint8_t *key, size_t key_len, const uint8_t *msg, size_t msg_len, uint8_t *out) {
   uint8_t k_ipad[64], k_opad[64], tk[32];
   if (key_len > 64) {
@@ -452,6 +534,45 @@ static int l_hmac_sha256(lua_State *L) {
   return 1;
 }
 
+static void hmac_sha1 (const uint8_t *key, size_t key_len, const uint8_t *msg, size_t msg_len, uint8_t *out) {
+  uint8_t k_ipad[64], k_opad[64], tk[20];
+  if (key_len > 64) {
+    sha1((const char *)key, key_len, tk);
+    key = tk;
+    key_len = 20;
+  }
+  memset(k_ipad, 0x36, 64);
+  memset(k_opad, 0x5c, 64);
+  for (size_t i = 0; i < key_len; i++) {
+    k_ipad[i] ^= key[i];
+    k_opad[i] ^= key[i];
+  }
+  tk_sha1_ctx ctx;
+  uint8_t inner[20];
+  tk_sha1_init(&ctx);
+  tk_sha1_update(&ctx, k_ipad, 64);
+  tk_sha1_update(&ctx, msg, msg_len);
+  tk_sha1_final(&ctx, inner);
+  tk_sha1_init(&ctx);
+  tk_sha1_update(&ctx, k_opad, 64);
+  tk_sha1_update(&ctx, inner, 20);
+  tk_sha1_final(&ctx, out);
+}
+
+static int l_hmac_sha1(lua_State *L) {
+  size_t key_len, msg_len;
+  const char *key = luaL_checklstring(L, 1, &key_len);
+  const char *msg = luaL_checklstring(L, 2, &msg_len);
+  uint8_t out[20];
+  hmac_sha1((const uint8_t *)key, key_len, (const uint8_t *)msg, msg_len, out);
+  char hex[41];
+  for (int i = 0; i < 20; i++) {
+    sprintf(hex + i * 2, "%02x", out[i]);
+  }
+  lua_pushlstring(L, hex, 40);
+  return 1;
+}
+
 static int l_key_hash_ivec(lua_State *L) {
   tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
   struct { size_t n, m; int64_t *a; int lua_managed; } *v =
@@ -536,6 +657,7 @@ static luaL_Reg module_funcs[] = {
   {"unwrap_key", l_unwrap_key},
   {"verify_request", l_verify_request},
   {"hmac_sha256", l_hmac_sha256},
+  {"hmac_sha1", l_hmac_sha1},
   {"const_eq", l_const_eq},
   {NULL, NULL}
 };
