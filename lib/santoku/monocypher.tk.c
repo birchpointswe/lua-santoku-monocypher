@@ -183,6 +183,55 @@ static int l_validate (lua_State *L) {
   return 1;
 }
 
+static int l_phrase_audit (lua_State *L) {
+  size_t len;
+  const char *secret = luaL_checklstring(L, 1, &len);
+  (void)len;
+  char *copy = strdup(secret);
+  char *words[64];
+  int n = 0;
+  for (char *tok = strtok(copy, " \t\n\r"); tok && n < 64; tok = strtok(NULL, " \t\n\r")) {
+    for (char *c = tok; *c; c++) *c = tolower(*c);
+    words[n++] = tok;
+  }
+  const char *hit = NULL;
+  if (n >= 2) {
+    for (int i = 0; i < n && !hit; i++)
+      for (int j = i + 1; j < n; j++)
+        if (strcmp(words[i], words[j]) == 0) { hit = "repeated_word"; break; }
+    if (!hit) {
+      int same = 1;
+      for (int i = 1; i < n; i++)
+        if (words[i][0] != words[0][0]) { same = 0; break; }
+      if (same) hit = "same_letter";
+    }
+    if (!hit) {
+      int asc = 1, desc = 1;
+      for (int i = 1; i < n; i++) {
+        if (words[i][0] != words[i - 1][0] + 1) asc = 0;
+        if (words[i][0] != words[i - 1][0] - 1) desc = 0;
+      }
+      if (asc || desc) hit = "sequential";
+    }
+    if (!hit) {
+      int asc = 1, desc = 1;
+      for (int i = 1; i < n; i++) {
+        int c = strcmp(words[i - 1], words[i]);
+        if (c > 0) asc = 0;
+        if (c < 0) desc = 0;
+      }
+      if (asc || desc) hit = "alphabetical";
+    }
+  }
+  free(copy);
+  if (hit) {
+    lua_pushstring(L, hit);
+  } else {
+    lua_pushnil(L);
+  }
+  return 1;
+}
+
 static const char TK_ARGON2_SALT[] = "littlelist-argon2-v1";
 
 static void derive_master (const char *secret, size_t secret_len,
@@ -659,6 +708,7 @@ static luaL_Reg module_funcs[] = {
   {"hmac_sha256", l_hmac_sha256},
   {"hmac_sha1", l_hmac_sha1},
   {"const_eq", l_const_eq},
+  {"phrase_audit", l_phrase_audit},
   {NULL, NULL}
 };
 
