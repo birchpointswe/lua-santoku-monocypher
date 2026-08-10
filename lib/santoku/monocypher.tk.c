@@ -254,8 +254,10 @@ static const char *derive_master (const char *secret, size_t secret_len,
     return "invalid argon2 parameters";
   if (secret_len > UINT32_MAX)
     return "secret too long";
+#if SIZE_MAX / 1024 < UINT32_MAX
   if (nb_blocks > SIZE_MAX / 1024)
     return "argon2 memory too large";
+#endif
   void *work_area = malloc((size_t)nb_blocks * 1024);
   if (!work_area)
     return "argon2 work area allocation failed";
