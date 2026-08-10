@@ -145,9 +145,21 @@ static int key_gc (lua_State *L) {
   return 0;
 }
 
+static char *tk_dup_lstring (lua_State *L, const char *s, size_t len) {
+  char *copy = malloc(len + 1);
+  if (!copy) {
+    tk_lua_errmalloc(L);
+    return NULL;
+  }
+  memcpy(copy, s, len);
+  copy[len] = '\0';
+  return copy;
+}
+
 static int l_generate (lua_State *L) {
   luaL_checktype(L, lua_upvalueindex(1), LUA_TTABLE);
-  char result[256] = {0};
+  luaL_Buffer b;
+  luaL_buffinit(L, &b);
   for (int i = 0; i < TK_PHRASE_WORDS; i++) {
     char dice[6] = {0};
     for (int j = 0; j < 5; j++) {
@@ -155,25 +167,26 @@ static int l_generate (lua_State *L) {
       do { arc4random_buf(&r, 1); } while (r >= 252);
       dice[j] = '1' + (r % 6);
     }
+    if (i > 0) luaL_addchar(&b, ' ');
     lua_getfield(L, lua_upvalueindex(1), dice);
-    if (i > 0) strcat(result, " ");
-    strcat(result, lua_tostring(L, -1));
-    lua_pop(L, 1);
+    if (lua_type(L, -1) != LUA_TSTRING)
+      return tk_lua_error(L, "missing wordlist entry");
+    luaL_addvalue(&b);
   }
-  lua_pushstring(L, result);
+  luaL_pushresult(&b);
   return 1;
 }
 
 static int l_validate (lua_State *L) {
   size_t len;
   const char *secret = luaL_checklstring(L, 1, &len);
-  (void)len;
   luaL_checktype(L, lua_upvalueindex(1), LUA_TTABLE);
   int word_count = 0, all_valid = 1;
-  char *copy = strdup(secret), *p = copy;
-  for (char *tok = strtok(p, " \t\n\r"); tok; tok = strtok(NULL, " \t\n\r")) {
+  char *copy = tk_dup_lstring(L, secret, len);
+  if (!copy) return 0;
+  for (char *tok = strtok(copy, " \t\n\r"); tok; tok = strtok(NULL, " \t\n\r")) {
     word_count++;
-    for (char *c = tok; *c; c++) *c = tolower(*c);
+    for (char *c = tok; *c; c++) *c = (char) tolower((unsigned char) *c);
     lua_getfield(L, lua_upvalueindex(1), tok);
     if (lua_isnil(L, -1)) all_valid = 0;
     lua_pop(L, 1);
@@ -186,12 +199,12 @@ static int l_validate (lua_State *L) {
 static int l_phrase_audit (lua_State *L) {
   size_t len;
   const char *secret = luaL_checklstring(L, 1, &len);
-  (void)len;
-  char *copy = strdup(secret);
+  char *copy = tk_dup_lstring(L, secret, len);
+  if (!copy) return 0;
   char *words[64];
   int n = 0;
   for (char *tok = strtok(copy, " \t\n\r"); tok && n < 64; tok = strtok(NULL, " \t\n\r")) {
-    for (char *c = tok; *c; c++) *c = tolower(*c);
+    for (char *c = tok; *c; c++) *c = (char) tolower((unsigned char) *c);
     words[n++] = tok;
   }
   const char *hit = NULL;
@@ -234,10 +247,18 @@ static int l_phrase_audit (lua_State *L) {
 
 static const char TK_ARGON2_SALT[] = "littlelist-argon2-v1";
 
-static void derive_master (const char *secret, size_t secret_len,
-                           uint32_t nb_blocks, uint32_t nb_passes,
-                           uint8_t *master_out) {
+static const char *derive_master (const char *secret, size_t secret_len,
+                                  uint32_t nb_blocks, uint32_t nb_passes,
+                                  uint8_t *master_out) {
+  if (nb_blocks < 8 || nb_passes < 1)
+    return "invalid argon2 parameters";
+  if (secret_len > UINT32_MAX)
+    return "secret too long";
+  if (nb_blocks > SIZE_MAX / 1024)
+    return "argon2 memory too large";
   void *work_area = malloc((size_t)nb_blocks * 1024);
+  if (!work_area)
+    return "argon2 work area allocation failed";
   crypto_argon2_config config = { CRYPTO_ARGON2_ID, nb_blocks, nb_passes, 1 };
   crypto_argon2_inputs inputs = {
     (const uint8_t *)secret, (const uint8_t *)TK_ARGON2_SALT,
@@ -245,6 +266,7 @@ static void derive_master (const char *secret, size_t secret_len,
   };
   crypto_argon2(master_out, 32, work_area, config, inputs, crypto_argon2_no_extras);
   free(work_area);
+  return NULL;
 }
 
 static int l_derive_identity (lua_State *L) {
@@ -255,7 +277,8 @@ static int l_derive_identity (lua_State *L) {
   tk_identity_t *id = tk_lua_newuserdata(L, tk_identity_t, MT_IDENTITY, NULL, identity_gc);
   id->argon2_memory = nb_blocks;
   id->argon2_passes = nb_passes;
-  derive_master(secret, len, nb_blocks, nb_passes, id->master);
+  const char *err = derive_master(secret, len, nb_blocks, nb_passes, id->master);
+  if (err) return tk_lua_error(L, err);
   id->has_master = 1;
   tk_hmac_sha256(id->master, 32, (const uint8_t *)"littlelist-id-sub-v1", 20, id->sub);
   uint8_t seed[32];
@@ -275,7 +298,8 @@ static int l_derive_key (lua_State *L) {
   } else {
     uint32_t nb_blocks = id->argon2_memory ? id->argon2_memory : 65536;
     uint32_t nb_passes = id->argon2_passes ? id->argon2_passes : 3;
-    derive_master(secret, len, nb_blocks, nb_passes, master);
+    const char *err = derive_master(secret, len, nb_blocks, nb_passes, master);
+    if (err) return tk_lua_error(L, err);
     memcpy(id->master, master, 32);
     id->has_master = 1;
   }
@@ -289,7 +313,7 @@ static int l_identity_sub(lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
   char b64[44];
   size_t out_len;
-  tk_lua_to_base64_buf((const char *)id->sub, 32, false, true, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)id->sub, 32, false, true, b64, sizeof(b64), &out_len);
   lua_pushlstring(L, b64, out_len);
   return 1;
 }
@@ -298,7 +322,7 @@ static int l_identity_public_key(lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
   char b64[44];
   size_t out_len;
-  tk_lua_to_base64_buf((const char *)id->public_key, 32, false, true, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)id->public_key, 32, false, true, b64, sizeof(b64), &out_len);
   lua_pushlstring(L, b64, out_len);
   return 1;
 }
@@ -311,7 +335,7 @@ static int l_identity_sign(lua_State *L) {
   crypto_eddsa_sign(sig, id->signing_key, (const uint8_t *)msg, len);
   char b64[88];
   size_t out_len;
-  tk_lua_to_base64_buf((const char *)sig, 64, false, true, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)sig, 64, false, true, b64, sizeof(b64), &out_len);
   lua_pushlstring(L, b64, out_len);
   return 1;
 }
@@ -322,16 +346,21 @@ static int l_identity_sign_request(lua_State *L) {
   const char *body = luaL_checklstring(L, 2, &len);
   char sub_b64[44];
   size_t sub_b64_len;
-  tk_lua_to_base64_buf((const char *)id->sub, 32, false, true, sub_b64, &sub_b64_len);
-  size_t msg_len = sub_b64_len + 1 + len + 1;
+  tk_lua_to_base64_buf((const char *)id->sub, 32, false, true, sub_b64, sizeof(sub_b64), &sub_b64_len);
+  if (len > SIZE_MAX - sub_b64_len - 1)
+    return tk_lua_error(L, "body too long");
+  size_t msg_len = sub_b64_len + 1 + len;
   char *msg = malloc(msg_len);
-  snprintf(msg, msg_len, "%.*s:%s", (int)sub_b64_len, sub_b64, body);
+  if (!msg) return tk_lua_errmalloc(L);
+  memcpy(msg, sub_b64, sub_b64_len);
+  msg[sub_b64_len] = ':';
+  memcpy(msg + sub_b64_len + 1, body, len);
   uint8_t sig[64];
-  crypto_eddsa_sign(sig, id->signing_key, (const uint8_t *)msg, strlen(msg));
+  crypto_eddsa_sign(sig, id->signing_key, (const uint8_t *)msg, msg_len);
   free(msg);
   char sig_b64[88];
   size_t sig_b64_len;
-  tk_lua_to_base64_buf((const char *)sig, 64, false, true, sig_b64, &sig_b64_len);
+  tk_lua_to_base64_buf((const char *)sig, 64, false, true, sig_b64, sizeof(sig_b64), &sig_b64_len);
   lua_pushlstring(L, sig_b64, sig_b64_len);
   return 1;
 }
@@ -341,34 +370,38 @@ static int l_identity_export(lua_State *L) {
   char b64[88];
   size_t out_len;
   lua_newtable(L);
-  tk_lua_to_base64_buf((const char *)id->sub, 32, false, true, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)id->sub, 32, false, true, b64, sizeof(b64), &out_len);
   lua_pushlstring(L, b64, out_len); lua_setfield(L, -2, "sub");
-  tk_lua_to_base64_buf((const char *)id->signing_key, 64, false, true, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)id->signing_key, 64, false, true, b64, sizeof(b64), &out_len);
   lua_pushlstring(L, b64, out_len); lua_setfield(L, -2, "signing_key");
-  tk_lua_to_base64_buf((const char *)id->public_key, 32, false, true, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)id->public_key, 32, false, true, b64, sizeof(b64), &out_len);
   lua_pushlstring(L, b64, out_len); lua_setfield(L, -2, "public_key");
   lua_pushinteger(L, id->argon2_memory); lua_setfield(L, -2, "argon2_memory");
   lua_pushinteger(L, id->argon2_passes); lua_setfield(L, -2, "argon2_passes");
   return 1;
 }
 
+static bool import_field_b64 (lua_State *L, int i, const char *field, uint8_t *out, size_t exact) {
+  lua_getfield(L, i, field);
+  if (lua_type(L, -1) != LUA_TSTRING) {
+    lua_pop(L, 1);
+    return false;
+  }
+  size_t len, out_len;
+  const char *str = lua_tolstring(L, -1, &len);
+  bool ok = tk_lua_from_base64_buf(str, len, false, (char *)out, exact, &out_len)
+    && out_len == exact;
+  lua_pop(L, 1);
+  return ok;
+}
+
 static int l_import_identity(lua_State *L) {
   luaL_checktype(L, 1, LUA_TTABLE);
   tk_identity_t *id = tk_lua_newuserdata(L, tk_identity_t, MT_IDENTITY, NULL, identity_gc);
-  size_t len, out_len;
-  const char *str;
-  lua_getfield(L, 1, "sub");
-  str = lua_tolstring(L, -1, &len);
-  tk_lua_from_base64_buf(str, len, false, (char *)id->sub, &out_len);
-  lua_pop(L, 1);
-  lua_getfield(L, 1, "signing_key");
-  str = lua_tolstring(L, -1, &len);
-  tk_lua_from_base64_buf(str, len, false, (char *)id->signing_key, &out_len);
-  lua_pop(L, 1);
-  lua_getfield(L, 1, "public_key");
-  str = lua_tolstring(L, -1, &len);
-  tk_lua_from_base64_buf(str, len, false, (char *)id->public_key, &out_len);
-  lua_pop(L, 1);
+  if (!import_field_b64(L, 1, "sub", id->sub, sizeof(id->sub)) ||
+      !import_field_b64(L, 1, "signing_key", id->signing_key, sizeof(id->signing_key)) ||
+      !import_field_b64(L, 1, "public_key", id->public_key, sizeof(id->public_key)))
+    return tk_lua_error(L, "invalid identity");
   lua_getfield(L, 1, "argon2_memory");
   id->argon2_memory = lua_isnil(L, -1) ? 65536 : (uint32_t)lua_tointeger(L, -1);
   lua_pop(L, 1);
@@ -382,7 +415,7 @@ static int l_key_export(lua_State *L) {
   tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
   char b64[44];
   size_t out_len;
-  tk_lua_to_base64_buf((const char *)k->key, 32, false, true, b64, &out_len);
+  tk_lua_to_base64_buf((const char *)k->key, 32, false, true, b64, sizeof(b64), &out_len);
   lua_pushlstring(L, b64, out_len);
   return 1;
 }
@@ -407,7 +440,9 @@ static int l_import_key(lua_State *L) {
   const char *b64 = luaL_checklstring(L, 1, &b64_len);
   tk_key_t *k = tk_lua_newuserdata(L, tk_key_t, MT_KEY, NULL, key_gc);
   size_t out_len;
-  tk_lua_from_base64_buf(b64, b64_len, false, (char *)k->key, &out_len);
+  if (!tk_lua_from_base64_buf(b64, b64_len, false, (char *)k->key, sizeof(k->key), &out_len)
+      || out_len != sizeof(k->key))
+    return tk_lua_error(L, "invalid key");
   return 1;
 }
 
@@ -422,15 +457,18 @@ static int l_key_encrypt(lua_State *L) {
   }
   uint8_t nonce[24];
   arc4random_buf(nonce, 24);
+  if (len > SIZE_MAX / 8 - 64)
+    return tk_lua_error(L, "plaintext too long");
   size_t out_len = 1 + 24 + len + 16;
-  size_t b64_max = ((out_len + 2) / 3) * 4;
+  size_t b64_max = tk_lua_to_base64_size(out_len, true);
   uint8_t *buf = malloc(out_len + b64_max);
+  if (!buf) return tk_lua_errmalloc(L);
   buf[0] = ad_len ? VERSION_AAD : VERSION;
   memcpy(buf + 1, nonce, 24);
   crypto_aead_lock(buf + 25, buf + 25 + len, k->key, nonce, ad, ad_len, (const uint8_t *)pt, len);
   char *b64 = (char *)(buf + out_len);
   size_t b64_len;
-  tk_lua_to_base64_buf((const char *)buf, out_len, false, true, b64, &b64_len);
+  tk_lua_to_base64_buf((const char *)buf, out_len, false, true, b64, b64_max, &b64_len);
   lua_pushlstring(L, b64, b64_len);
   free(buf);
   return 1;
@@ -445,10 +483,11 @@ static int l_key_decrypt(lua_State *L) {
   if (!lua_isnoneornil(L, 3)) {
     ad = (const uint8_t *)luaL_checklstring(L, 3, &ad_len);
   }
-  size_t dec_max = (b64_len * 3) / 4;
-  uint8_t *in = malloc(dec_max);
+  size_t dec_max = tk_lua_from_base64_size(tk_lua_base64_prefix(b64, b64_len, false));
+  uint8_t *in = malloc(dec_max ? dec_max : 1);
+  if (!in) return tk_lua_errmalloc(L);
   size_t dec_len;
-  tk_lua_from_base64_buf(b64, b64_len, false, (char *)in, &dec_len);
+  tk_lua_from_base64_buf(b64, b64_len, false, (char *)in, dec_max, &dec_len);
 
   if (dec_len < 1 + 24 + 16) {
     free(in);
@@ -473,7 +512,11 @@ static int l_key_decrypt(lua_State *L) {
   size_t ct_len = dec_len - 1 - 24 - 16;
   uint8_t *ct = in + 25;
   uint8_t *mac = in + 25 + ct_len;
-  uint8_t *pt = malloc(ct_len);
+  uint8_t *pt = malloc(ct_len ? ct_len : 1);
+  if (!pt) {
+    free(in);
+    return tk_lua_errmalloc(L);
+  }
   int ret = crypto_aead_unlock(pt, mac, k->key, nonce, ad, ad_len, ct, ct_len);
   free(in);
   if (ret != 0) {
@@ -499,14 +542,15 @@ static int l_wrap_key(lua_State *L) {
   uint8_t nonce[24];
   arc4random_buf(nonce, 24);
   size_t out_len = 1 + 24 + 32 + 16;
-  size_t b64_max = ((out_len + 2) / 3) * 4;
+  size_t b64_max = tk_lua_to_base64_size(out_len, true);
   uint8_t *buf = malloc(out_len + b64_max);
+  if (!buf) return tk_lua_errmalloc(L);
   buf[0] = VERSION;
   memcpy(buf + 1, nonce, 24);
   crypto_aead_lock(buf + 25, buf + 25 + 32, (const uint8_t *)wrap, nonce, NULL, 0, k->key, 32);
   char *b64 = (char *)(buf + out_len);
   size_t b64_len;
-  tk_lua_to_base64_buf((const char *)buf, out_len, false, true, b64, &b64_len);
+  tk_lua_to_base64_buf((const char *)buf, out_len, false, true, b64, b64_max, &b64_len);
   lua_pushlstring(L, b64, b64_len);
   free(buf);
   return 1;
@@ -522,10 +566,11 @@ static int l_unwrap_key(lua_State *L) {
     lua_pushstring(L, "wrap_bytes must be exactly 32 bytes");
     return 2;
   }
-  size_t dec_max = (b64_len * 3) / 4;
-  uint8_t *in = malloc(dec_max);
+  size_t dec_max = tk_lua_from_base64_size(tk_lua_base64_prefix(b64, b64_len, false));
+  uint8_t *in = malloc(dec_max ? dec_max : 1);
+  if (!in) return tk_lua_errmalloc(L);
   size_t dec_len;
-  tk_lua_from_base64_buf(b64, b64_len, false, (char *)in, &dec_len);
+  tk_lua_from_base64_buf(b64, b64_len, false, (char *)in, dec_max, &dec_len);
   if (dec_len < 1 + 24 + 16 || in[0] != VERSION) {
     free(in);
     lua_pushnil(L);
@@ -637,21 +682,30 @@ static int l_key_hash_ivec(lua_State *L) {
 }
 
 static int l_verify_request(lua_State *L) {
-  size_t pk_b64_len, sig_b64_len;
+  size_t pk_b64_len, sig_b64_len, sub_b64_len, body_len;
   const char *pk_b64 = luaL_checklstring(L, 1, &pk_b64_len);
   const char *sig_b64 = luaL_checklstring(L, 2, &sig_b64_len);
-  const char *sub_b64 = luaL_checkstring(L, 3);
-  size_t body_len;
+  const char *sub_b64 = luaL_checklstring(L, 3, &sub_b64_len);
   const char *body = luaL_checklstring(L, 4, &body_len);
-  uint8_t sig[64];
-  size_t out_len;
-  tk_lua_from_base64_buf(sig_b64, sig_b64_len, false, (char *)sig, &out_len);
-  uint8_t pk[32];
-  tk_lua_from_base64_buf(pk_b64, pk_b64_len, false, (char *)pk, &out_len);
-  size_t msg_len = strlen(sub_b64) + 1 + body_len + 1;
+  uint8_t sig[64], pk[32];
+  size_t sig_len, pk_len;
+  if (!tk_lua_from_base64_buf(sig_b64, sig_b64_len, false, (char *)sig, sizeof(sig), &sig_len) ||
+      sig_len != sizeof(sig) ||
+      !tk_lua_from_base64_buf(pk_b64, pk_b64_len, false, (char *)pk, sizeof(pk), &pk_len) ||
+      pk_len != sizeof(pk)) {
+    lua_pushnil(L);
+    lua_pushstring(L, "invalid_signature");
+    return 2;
+  }
+  if (body_len > SIZE_MAX - sub_b64_len - 1)
+    return tk_lua_error(L, "body too long");
+  size_t msg_len = sub_b64_len + 1 + body_len;
   char *msg = malloc(msg_len);
-  snprintf(msg, msg_len, "%s:%s", sub_b64, body);
-  int valid = crypto_eddsa_check(sig, pk, (const uint8_t *)msg, strlen(msg)) == 0;
+  if (!msg) return tk_lua_errmalloc(L);
+  memcpy(msg, sub_b64, sub_b64_len);
+  msg[sub_b64_len] = ':';
+  memcpy(msg + sub_b64_len + 1, body, body_len);
+  int valid = crypto_eddsa_check(sig, pk, (const uint8_t *)msg, msg_len) == 0;
   free(msg);
   if (!valid) {
     lua_pushnil(L);
