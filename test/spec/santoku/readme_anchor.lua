@@ -1,53 +1,3 @@
-<p align="center">
-  <img src="https://santoku.dev/logo-santoku-monocypher.png" height="64" alt="santoku-monocypher">
-</p>
-
-# santoku-monocypher
-
-Application-level cryptography on [Monocypher](https://monocypher.org): passphrase-derived
-identities (Argon2id plus Ed25519), authenticated encryption with associated data,
-domain-separated subkeys, key wrapping, HMAC, and diceware passphrase generation.
-
-## Install
-
-```sh
-luarocks install santoku-monocypher
-```
-
-## Example
-
-```lua
-local crypto = require("santoku.monocypher")
-
-local id = crypto.derive_identity(crypto.generate())
-local key = crypto.derive_key(passphrase, id)
-
-local ciphertext = key:encrypt("hello", "sub:" .. id:sub())
-
-print(key:decrypt(ciphertext, "sub:" .. id:sub()))
-```
-
-Decryption failures come back as `nil` plus a reason, not as errors.
-
-## Documentation
-
-Runnable examples and the full API: [santoku.dev](https://santoku.dev/#santoku-monocypher).
-
-For agents and LLM tooling: [llms.txt](https://santoku.dev/llms.txt) for the index,
-[llms-full.txt](https://santoku.dev/llms-full.txt) for every documented example.
-
-## Tests
-
-The tests are the spec. For the exhaustive surface, read them:
-[`test/spec/santoku/monocypher.lua`](test/spec/santoku/monocypher.lua).
-
-## License
-
-MIT, see [LICENSE](LICENSE).
-
-## More examples
-
-```lua
 local test = require("santoku.test")
 
 local err = require("santoku.error")
@@ -92,4 +42,3 @@ test("generated passphrases are diceware and validate", function ()
   assert(eq(true, crypto.validate(crypto.generate())))
   assert(eq(false, crypto.validate("invalid-words-here-now-test-foo")))
 end)
-```
