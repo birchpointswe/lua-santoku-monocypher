@@ -6,6 +6,7 @@
 
 typedef struct {
   uint8_t key[32];
+  uint8_t wiped;
 } tk_key_t;
 
 typedef struct {
@@ -16,6 +17,7 @@ typedef struct {
   uint32_t argon2_passes;
   uint8_t master[32];
   uint8_t has_master;
+  uint8_t wiped;
 } tk_identity_t;
 
 <% return readfile("res/vendor/monocypher/monocypher.h") %>
@@ -55,6 +57,11 @@ static inline void tk_hmac_sha256(
   sha256_update(&ctx, o_key_pad, 64);
   sha256_update(&ctx, inner_hash, 32);
   sha256_final(&ctx, out);
+  crypto_wipe(k, sizeof(k));
+  crypto_wipe(o_key_pad, sizeof(o_key_pad));
+  crypto_wipe(i_key_pad, sizeof(i_key_pad));
+  crypto_wipe(inner_hash, sizeof(inner_hash));
+  crypto_wipe(&ctx, sizeof(ctx));
 }
 
 #endif

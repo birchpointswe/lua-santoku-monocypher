@@ -24,6 +24,7 @@ static void sha256 (const char *data, size_t len, uint8_t *out) {
   sha256_init(&ctx);
   sha256_update(&ctx, (const BYTE *)data, len);
   sha256_final(&ctx, out);
+  crypto_wipe(&ctx, sizeof(ctx));
 }
 
 typedef struct {
@@ -106,6 +107,7 @@ static void sha1 (const char *data, size_t len, uint8_t *out) {
   tk_sha1_init(&ctx);
   tk_sha1_update(&ctx, (const uint8_t *)data, len);
   tk_sha1_final(&ctx, out);
+  crypto_wipe(&ctx, sizeof(ctx));
 }
 
 static void hmac_sha256 (const uint8_t *key, size_t key_len, const uint8_t *msg, size_t msg_len, uint8_t *out) {
@@ -131,18 +133,63 @@ static void hmac_sha256 (const uint8_t *key, size_t key_len, const uint8_t *msg,
   sha256_update(&ctx, k_opad, 64);
   sha256_update(&ctx, inner, 32);
   sha256_final(&ctx, out);
+  crypto_wipe(k_ipad, sizeof(k_ipad));
+  crypto_wipe(k_opad, sizeof(k_opad));
+  crypto_wipe(tk, sizeof(tk));
+  crypto_wipe(inner, sizeof(inner));
+  crypto_wipe(&ctx, sizeof(ctx));
 }
 
 static int identity_gc (lua_State *L) {
   tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
   crypto_wipe(id, sizeof(*id));
+  id->wiped = 1;
   return 0;
 }
 
 static int key_gc (lua_State *L) {
   tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
   crypto_wipe(k, sizeof(*k));
+  k->wiped = 1;
   return 0;
+}
+
+static int l_identity_wipe (lua_State *L) {
+  tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
+  crypto_wipe(id, sizeof(*id));
+  id->wiped = 1;
+  return 0;
+}
+
+static int l_key_wipe (lua_State *L) {
+  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  crypto_wipe(k, sizeof(*k));
+  k->wiped = 1;
+  return 0;
+}
+
+static int l_identity_wiped (lua_State *L) {
+  tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
+  lua_pushboolean(L, id->wiped ? 1 : 0);
+  return 1;
+}
+
+static int l_key_wiped (lua_State *L) {
+  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  lua_pushboolean(L, k->wiped ? 1 : 0);
+  return 1;
+}
+
+static tk_identity_t *tk_check_identity (lua_State *L, int i) {
+  tk_identity_t *id = luaL_checkudata(L, i, MT_IDENTITY);
+  if (id->wiped) tk_lua_error(L, "identity has been wiped");
+  return id;
+}
+
+static tk_key_t *tk_check_key (lua_State *L, int i) {
+  tk_key_t *k = luaL_checkudata(L, i, MT_KEY);
+  if (k->wiped) tk_lua_error(L, "key has been wiped");
+  return k;
 }
 
 static char *tk_dup_lstring (lua_State *L, const char *s, size_t len) {
@@ -191,6 +238,7 @@ static int l_validate (lua_State *L) {
     if (lua_isnil(L, -1)) all_valid = 0;
     lua_pop(L, 1);
   }
+  crypto_wipe(copy, len + 1);
   free(copy);
   lua_pushboolean(L, word_count >= TK_PHRASE_WORDS && all_valid);
   return 1;
@@ -236,6 +284,7 @@ static int l_phrase_audit (lua_State *L) {
       if (asc || desc) hit = "alphabetical";
     }
   }
+  crypto_wipe(copy, len + 1);
   free(copy);
   if (hit) {
     lua_pushstring(L, hit);
@@ -267,6 +316,7 @@ static const char *derive_master (const char *secret, size_t secret_len,
     (uint32_t)secret_len, (uint32_t)(sizeof(TK_ARGON2_SALT) - 1)
   };
   crypto_argon2(master_out, 32, work_area, config, inputs, crypto_argon2_no_extras);
+  crypto_wipe(work_area, (size_t)nb_blocks * 1024);
   free(work_area);
   return NULL;
 }
@@ -293,7 +343,7 @@ static int l_derive_identity (lua_State *L) {
 static int l_derive_key (lua_State *L) {
   size_t len;
   const char *secret = luaL_checklstring(L, 1, &len);
-  tk_identity_t *id = luaL_checkudata(L, 2, MT_IDENTITY);
+  tk_identity_t *id = tk_check_identity(L, 2);
   uint8_t master[32];
   if (id->has_master) {
     memcpy(master, id->master, 32);
@@ -312,7 +362,7 @@ static int l_derive_key (lua_State *L) {
 }
 
 static int l_identity_sub(lua_State *L) {
-  tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
+  tk_identity_t *id = tk_check_identity(L, 1);
   char b64[44];
   size_t out_len;
   tk_lua_to_base64_buf((const char *)id->sub, 32, false, true, b64, sizeof(b64), &out_len);
@@ -321,7 +371,7 @@ static int l_identity_sub(lua_State *L) {
 }
 
 static int l_identity_public_key(lua_State *L) {
-  tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
+  tk_identity_t *id = tk_check_identity(L, 1);
   char b64[44];
   size_t out_len;
   tk_lua_to_base64_buf((const char *)id->public_key, 32, false, true, b64, sizeof(b64), &out_len);
@@ -330,7 +380,7 @@ static int l_identity_public_key(lua_State *L) {
 }
 
 static int l_identity_sign(lua_State *L) {
-  tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
+  tk_identity_t *id = tk_check_identity(L, 1);
   size_t len;
   const char *msg = luaL_checklstring(L, 2, &len);
   uint8_t sig[64];
@@ -343,7 +393,7 @@ static int l_identity_sign(lua_State *L) {
 }
 
 static int l_identity_sign_request(lua_State *L) {
-  tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
+  tk_identity_t *id = tk_check_identity(L, 1);
   size_t len;
   const char *body = luaL_checklstring(L, 2, &len);
   char sub_b64[44];
@@ -368,7 +418,7 @@ static int l_identity_sign_request(lua_State *L) {
 }
 
 static int l_identity_export(lua_State *L) {
-  tk_identity_t *id = luaL_checkudata(L, 1, MT_IDENTITY);
+  tk_identity_t *id = tk_check_identity(L, 1);
   char b64[88];
   size_t out_len;
   lua_newtable(L);
@@ -414,7 +464,7 @@ static int l_import_identity(lua_State *L) {
 }
 
 static int l_key_export(lua_State *L) {
-  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  tk_key_t *k = tk_check_key(L, 1);
   char b64[44];
   size_t out_len;
   tk_lua_to_base64_buf((const char *)k->key, 32, false, true, b64, sizeof(b64), &out_len);
@@ -423,13 +473,13 @@ static int l_key_export(lua_State *L) {
 }
 
 static int l_key_bytes(lua_State *L) {
-  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  tk_key_t *k = tk_check_key(L, 1);
   lua_pushlstring(L, (const char *)k->key, 32);
   return 1;
 }
 
 static int l_key_derive(lua_State *L) {
-  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  tk_key_t *k = tk_check_key(L, 1);
   size_t len;
   const char *label = luaL_checklstring(L, 2, &len);
   tk_key_t *out = tk_lua_newuserdata(L, tk_key_t, MT_KEY, NULL, key_gc);
@@ -449,7 +499,7 @@ static int l_import_key(lua_State *L) {
 }
 
 static int l_key_encrypt(lua_State *L) {
-  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  tk_key_t *k = tk_check_key(L, 1);
   size_t len;
   const char *pt = luaL_checklstring(L, 2, &len);
   size_t ad_len = 0;
@@ -477,7 +527,7 @@ static int l_key_encrypt(lua_State *L) {
 }
 
 static int l_key_decrypt(lua_State *L) {
-  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  tk_key_t *k = tk_check_key(L, 1);
   size_t b64_len;
   const char *b64 = luaL_checklstring(L, 2, &b64_len);
   size_t ad_len = 0;
@@ -528,12 +578,13 @@ static int l_key_decrypt(lua_State *L) {
     return 2;
   }
   lua_pushlstring(L, (char *)pt, ct_len);
+  crypto_wipe(pt, ct_len);
   free(pt);
   return 1;
 }
 
 static int l_wrap_key(lua_State *L) {
-  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  tk_key_t *k = tk_check_key(L, 1);
   size_t wrap_len;
   const char *wrap = luaL_checklstring(L, 2, &wrap_len);
   if (wrap_len != 32) {
@@ -603,7 +654,7 @@ static int l_unwrap_key(lua_State *L) {
 }
 
 static int l_key_hmac(lua_State *L) {
-  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  tk_key_t *k = tk_check_key(L, 1);
   size_t msg_len;
   const char *msg = luaL_checklstring(L, 2, &msg_len);
   uint8_t out[32];
@@ -653,6 +704,11 @@ static void hmac_sha1 (const uint8_t *key, size_t key_len, const uint8_t *msg, s
   tk_sha1_update(&ctx, k_opad, 64);
   tk_sha1_update(&ctx, inner, 20);
   tk_sha1_final(&ctx, out);
+  crypto_wipe(k_ipad, sizeof(k_ipad));
+  crypto_wipe(k_opad, sizeof(k_opad));
+  crypto_wipe(tk, sizeof(tk));
+  crypto_wipe(inner, sizeof(inner));
+  crypto_wipe(&ctx, sizeof(ctx));
 }
 
 static int l_hmac_sha1(lua_State *L) {
@@ -670,7 +726,7 @@ static int l_hmac_sha1(lua_State *L) {
 }
 
 static int l_key_hash_ivec(lua_State *L) {
-  tk_key_t *k = luaL_checkudata(L, 1, MT_KEY);
+  tk_key_t *k = tk_check_key(L, 1);
   struct { size_t n, m; int64_t *a; int lua_managed; } *v =
     (void *)luaL_checkudata(L, 2, "tk_ivec_t");
   for (size_t i = 0; i < v->n; i++) {
@@ -739,6 +795,8 @@ static luaL_Reg identity_methods[] = {
   {"sign", l_identity_sign},
   {"sign_request", l_identity_sign_request},
   {"export", l_identity_export},
+  {"wipe", l_identity_wipe},
+  {"wiped", l_identity_wiped},
   {NULL, NULL}
 };
 
@@ -750,6 +808,8 @@ static luaL_Reg key_methods[] = {
   {"decrypt", l_key_decrypt},
   {"hmac", l_key_hmac},
   {"hash_ivec", l_key_hash_ivec},
+  {"wipe", l_key_wipe},
+  {"wiped", l_key_wiped},
   {NULL, NULL}
 };
 
