@@ -350,3 +350,67 @@ test("wipe is idempotent and blocks further use", function ()
   assert(not pcall(function () return id:sign("hello") end))
   assert(not pcall(function () return crypto.derive_key("test-secret", id) end))
 end)
+
+local function unhex (h)
+  return (h:gsub("%x%x", function (b) return string.char(tonumber(b, 16)) end))
+end
+
+test("p256 keypair has the right shapes", function ()
+  local priv, pub = crypto.p256_keypair()
+  assert(#priv == 32)
+  assert(#pub == 64)
+  local priv2, pub2 = crypto.p256_keypair()
+  assert(priv ~= priv2)
+  assert(pub ~= pub2)
+end)
+
+test("p256 sign and verify round-trip", function ()
+  local priv, pub = crypto.p256_keypair()
+  local hash = crypto.hmac_sha256("k", "message to sign")
+  local digest = unhex(hash)
+  local sig = crypto.p256_sign(priv, digest)
+  assert(#sig == 64)
+  assert(crypto.p256_verify(pub, sig, digest) == true)
+end)
+
+test("p256 rejects a tampered signature, digest or key", function ()
+  local priv, pub = crypto.p256_keypair()
+  local digest = unhex(crypto.hmac_sha256("k", "authentic"))
+  local sig = crypto.p256_sign(priv, digest)
+  local bad_sig = string.char((sig:byte(1) + 1) % 256) .. sig:sub(2)
+  assert(crypto.p256_verify(pub, bad_sig, digest) == false)
+  local other = unhex(crypto.hmac_sha256("k", "different"))
+  assert(crypto.p256_verify(pub, sig, other) == false)
+  local _, pub2 = crypto.p256_keypair()
+  assert(crypto.p256_verify(pub2, sig, digest) == false)
+  assert(crypto.p256_verify("short", sig, digest) == false)
+  assert(crypto.p256_verify(pub, "short", digest) == false)
+end)
+
+test("p256 signatures are randomized but each verifies", function ()
+  local priv, pub = crypto.p256_keypair()
+  local digest = unhex(crypto.hmac_sha256("k", "same input"))
+  local a = crypto.p256_sign(priv, digest)
+  local b = crypto.p256_sign(priv, digest)
+  assert(a ~= b)
+  assert(crypto.p256_verify(pub, a, digest) == true)
+  assert(crypto.p256_verify(pub, b, digest) == true)
+end)
+
+test("p256 verifies a known NIST P-256 vector", function ()
+  local pub = unhex(
+    "1ccbe91c075fc7f4f033bfa248db8fccd3565de94bbfb12f3c59ff46c271bf83"
+    .. "ce4014c68811f9a21a1fdb2c0e6113e06db7ca93b7404e78dc7ccd5ca89a4ca9")
+  local digest = unhex(
+    "44acf6b7e36c1342c2c5897204fe09504e1e2efb1a900377dbc4e7a6a133ec56")
+  local sig = unhex(
+    "f3ac8061b514795b8843e3d6629527ed2afd6b1f6a555a7acabb5e6f79c8c2ac"
+    .. "8bf77819ca05a6b2786c76262bf7371cef97b218e96f175a3ccdda2acc058903")
+  assert(crypto.p256_verify(pub, sig, digest) == true)
+  local bad = string.char((digest:byte(1) + 1) % 256) .. digest:sub(2)
+  assert(crypto.p256_verify(pub, sig, bad) == false)
+end)
+
+test("p256 rejects a malformed private key", function ()
+  assert(not pcall(function () return crypto.p256_sign("tooshort", "x") end))
+end)

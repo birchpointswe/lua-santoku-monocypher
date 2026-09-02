@@ -29,6 +29,12 @@ static void arc4random_buf(void *buf, size_t n) {
 }
 #endif
 
+int p256_generate_random (uint8_t *out, unsigned n)
+{
+  arc4random_buf(out, n);
+  return P256_SUCCESS;
+}
+
 #define MT_IDENTITY TK_MT_IDENTITY
 #define MT_KEY TK_MT_KEY
 #define VERSION 0x01
@@ -805,6 +811,45 @@ static int l_const_eq(lua_State *L) {
   return 1;
 }
 
+static int l_p256_keypair (lua_State *L) {
+  uint8_t priv[32], pub[64];
+  if (p256_gen_keypair(priv, pub) != P256_SUCCESS)
+    return luaL_error(L, "p256 keypair generation failed");
+  lua_pushlstring(L, (const char *) priv, 32);
+  lua_pushlstring(L, (const char *) pub, 64);
+  crypto_wipe(priv, 32);
+  return 2;
+}
+
+static int l_p256_sign (lua_State *L) {
+  size_t plen, hlen;
+  const char *priv = luaL_checklstring(L, 1, &plen);
+  const char *hash = luaL_checklstring(L, 2, &hlen);
+  if (plen != 32)
+    return luaL_error(L, "p256 private key must be 32 bytes");
+  uint8_t sig[64];
+  if (p256_ecdsa_sign(sig, (const uint8_t *) priv,
+      (const uint8_t *) hash, hlen) != P256_SUCCESS)
+    return luaL_error(L, "p256 signing failed");
+  lua_pushlstring(L, (const char *) sig, 64);
+  return 1;
+}
+
+static int l_p256_verify (lua_State *L) {
+  size_t publen, siglen, hlen;
+  const char *pub = luaL_checklstring(L, 1, &publen);
+  const char *sig = luaL_checklstring(L, 2, &siglen);
+  const char *hash = luaL_checklstring(L, 3, &hlen);
+  if (publen != 64 || siglen != 64) {
+    lua_pushboolean(L, 0);
+    return 1;
+  }
+  int rc = p256_ecdsa_verify((const uint8_t *) sig, (const uint8_t *) pub,
+    (const uint8_t *) hash, hlen);
+  lua_pushboolean(L, rc == P256_SUCCESS);
+  return 1;
+}
+
 static luaL_Reg identity_methods[] = {
   {"sub", l_identity_sub},
   {"public_key", l_identity_public_key},
@@ -841,6 +886,9 @@ static luaL_Reg module_funcs[] = {
   {"hmac_sha1", l_hmac_sha1},
   {"const_eq", l_const_eq},
   {"phrase_audit", l_phrase_audit},
+  {"p256_keypair", l_p256_keypair},
+  {"p256_sign", l_p256_sign},
+  {"p256_verify", l_p256_verify},
   {NULL, NULL}
 };
 

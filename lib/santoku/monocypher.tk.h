@@ -28,6 +28,16 @@ typedef struct {
 
 <% return readfile("res/vendor/monocypher/sha256.c") %>
 
+<% return readfile("res/vendor/p256/p256-m.h") %>
+
+<%
+  local src = readfile("res/vendor/p256/p256-m.c")
+  src = src:gsub('#include "p256%-m.h"', "")
+  src = src:gsub("defined%(__ARM_ARCH%) && __ARM_ARCH >= 6",
+    "defined(__ARM_ARCH) && !defined(__aarch64__) && __ARM_ARCH >= 6")
+  return src
+%>
+
 static inline void tk_hmac_sha256(
   const uint8_t *key, size_t key_len,
   const uint8_t *msg, size_t msg_len,
