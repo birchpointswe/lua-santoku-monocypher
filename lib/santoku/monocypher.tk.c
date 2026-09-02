@@ -11,6 +11,22 @@ static void arc4random_buf(void *buf, size_t n) {
     HEAPU8.set(arr, $0);
   }, buf, n);
 }
+#elif defined(__linux__) && !defined(__GLIBC__) && !defined(__ANDROID__)
+#include <sys/random.h>
+#include <errno.h>
+#include <stdlib.h>
+static void arc4random_buf(void *buf, size_t n) {
+  unsigned char *p = (unsigned char *) buf;
+  while (n) {
+    ssize_t r = getrandom(p, n, 0);
+    if (r < 0) {
+      if (errno == EINTR) continue;
+      abort();
+    }
+    p += r;
+    n -= (size_t) r;
+  }
+}
 #endif
 
 #define MT_IDENTITY TK_MT_IDENTITY
