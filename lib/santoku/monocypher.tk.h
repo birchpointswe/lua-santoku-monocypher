@@ -28,15 +28,58 @@ typedef struct {
 
 <% return readfile("res/vendor/monocypher/sha256.c") %>
 
-<% return readfile("res/vendor/p256/p256-m.h") %>
+#ifdef TK_MONOCYPHER_P256
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+static void arc4random_buf(void *buf, size_t n) {
+  EM_ASM({
+    var arr = new Uint8Array($1);
+    crypto.getRandomValues(arr);
+    HEAPU8.set(arr, $0);
+  }, buf, n);
+}
+#elif defined(__linux__) && !defined(__GLIBC__) && !defined(__ANDROID__)
+#include <sys/random.h>
+#include <errno.h>
+#include <stdlib.h>
+static void arc4random_buf(void *buf, size_t n) {
+  unsigned char *p = (unsigned char *) buf;
+  while (n) {
+    ssize_t r = getrandom(p, n, 0);
+    if (r < 0) {
+      if (errno == EINTR) continue;
+      abort();
+    }
+    p += r;
+    n -= (size_t) r;
+  }
+}
+#endif
+
+<%
+  local h = readfile("res/vendor/p256/p256-m.h")
+  h = h:gsub("extern int p256_generate_random[^;]*;", "")
+  h = h:gsub("\nint p256_", "\nstatic inline int p256_")
+  return h
+%>
+
+static int p256_generate_random (uint8_t *out, unsigned n)
+{
+  arc4random_buf(out, n);
+  return 0;
+}
 
 <%
   local src = readfile("res/vendor/p256/p256-m.c")
   src = src:gsub('#include "p256%-m.h"', "")
   src = src:gsub("defined%(__ARM_ARCH%) && __ARM_ARCH >= 6",
     "defined(__ARM_ARCH) && !defined(__aarch64__) && __ARM_ARCH >= 6")
+  src = src:gsub("\nint p256_", "\nstatic inline int p256_")
   return src
 %>
+
+#endif
 
 static inline void tk_hmac_sha256(
   const uint8_t *key, size_t key_len,

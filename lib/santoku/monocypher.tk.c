@@ -1,39 +1,7 @@
 #include <santoku/lua/utils.h>
+#define TK_MONOCYPHER_P256
 #include <santoku/monocypher.h>
 #include <ctype.h>
-
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-static void arc4random_buf(void *buf, size_t n) {
-  EM_ASM({
-    var arr = new Uint8Array($1);
-    crypto.getRandomValues(arr);
-    HEAPU8.set(arr, $0);
-  }, buf, n);
-}
-#elif defined(__linux__) && !defined(__GLIBC__) && !defined(__ANDROID__)
-#include <sys/random.h>
-#include <errno.h>
-#include <stdlib.h>
-static void arc4random_buf(void *buf, size_t n) {
-  unsigned char *p = (unsigned char *) buf;
-  while (n) {
-    ssize_t r = getrandom(p, n, 0);
-    if (r < 0) {
-      if (errno == EINTR) continue;
-      abort();
-    }
-    p += r;
-    n -= (size_t) r;
-  }
-}
-#endif
-
-int p256_generate_random (uint8_t *out, unsigned n)
-{
-  arc4random_buf(out, n);
-  return P256_SUCCESS;
-}
 
 #define MT_IDENTITY TK_MT_IDENTITY
 #define MT_KEY TK_MT_KEY
