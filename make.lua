@@ -2,7 +2,7 @@ local rock = require("santoku.make.rock")
 
 local env = {
   name = "santoku-monocypher",
-  version = "2.2.3-1",
+  version = "2.2.4-1",
   license = "MIT",
   public = true,
   cflags = {
