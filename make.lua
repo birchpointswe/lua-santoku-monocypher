@@ -1,10 +1,12 @@
+local rock = require("santoku.make.rock")
+
 local env = {
   name = "santoku-monocypher",
-  version = "2.2.1-1",
+  version = "2.2.2-1",
   license = "MIT",
   public = true,
   cflags = {
-    "-I$(shell luarocks show santoku --rock-dir)/include/",
+    rock.include("santoku"),
   },
   ldflags = {},
   dependencies = {
